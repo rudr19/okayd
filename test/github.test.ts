@@ -76,3 +76,22 @@ test('a read-only token skips the comment instead of failing', async () => {
   assert.equal(r.comment, 'skipped');
   assert.match(r.reason ?? '', /403/);
 });
+
+test('rejects a malformed repository, non-https API URL, and caps huge comments', async () => {
+  const { apiBase, capBody, MAX_COMMENT_CHARS } = await import('../src/github.js');
+  const calls: Call[] = [];
+  const base = { GITHUB_ACTIONS: 'true', GITHUB_TOKEN: 't', GITHUB_REF: 'refs/pull/5/merge' };
+  for (const env of [
+    { ...base, GITHUB_REPOSITORY: 'evil.com/../x' },
+    { ...base, GITHUB_REPOSITORY: 'a/b', GITHUB_API_URL: 'http://api.github.com' },
+    { ...base, GITHUB_REPOSITORY: 'a/b', GITHUB_API_URL: 'https://u:p@api.github.com' },
+  ]) {
+    const r = await publishToGitHub([ledger], env, fakeFetch([], calls));
+    assert.equal(r.comment, 'skipped');
+  }
+  assert.equal(calls.length, 0, 'no request is sent for invalid input');
+  assert.equal(apiBase(undefined), 'https://api.github.com');
+  assert.equal(apiBase('https://github.example.com/api/v3/'), 'https://github.example.com/api/v3');
+  const capped = capBody('x'.repeat(MAX_COMMENT_CHARS + 10));
+  assert.ok(capped.length < MAX_COMMENT_CHARS + 200 && capped.includes('truncated'));
+});
