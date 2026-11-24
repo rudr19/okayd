@@ -57,5 +57,5 @@ CI check.
 
 ## License
 
-Apache-2.0 for this package. Copyright © 2026 Rudra. "Probato" is a
+Apache-2.0 for this package. Copyright © 2026 Rudra Kumar Pandey. "Probato" is a
 trademark of its author. Contributions need a signed CLA (see `CLA.md`).
