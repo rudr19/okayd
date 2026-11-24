@@ -111,7 +111,18 @@ async function loadLogin(login: string | LoginHook): Promise<LoginHook> {
  * end a script, open HTML, or terminate a line (CodeQL js/bad-code-sanitization).
  */
 export function jsLiteral(value: unknown): string {
-  return JSON.stringify(value).replace(/[<>&/  ]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  const json = JSON.stringify(value);
+  let out = '';
+  for (let i = 0; i < json.length; i += 1) {
+    const code = json.charCodeAt(i);
+    // < > & / and the two Unicode line separators
+    if (code === 0x3c || code === 0x3e || code === 0x26 || code === 0x2f || code === 0x2028 || code === 0x2029) {
+      out += '\\u' + code.toString(16).padStart(4, '0');
+    } else {
+      out += json[i];
+    }
+  }
+  return out;
 }
 
 /** Runs before the page's own scripts on every document, and only once per tab. */
