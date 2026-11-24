@@ -63,11 +63,37 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okayd gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+## Browser driver
+
+Okayd ships its own Chrome driver with zero runtime dependencies. It speaks the
+DevTools Protocol directly over Node's built-in WebSocket (Node 22 or later) and
+is built for agents: it returns short text snapshots of the accessibility tree
+and acts by ref.
+
+```ts
+import { Browser } from 'okayd/driver';
+
+const browser = await Browser.launch();
+try {
+  const page = await browser.newPage();
+  await page.goto('https://example.com');
+  const { text } = await page.snapshot(); // - link "More information..." [ref=e1]
+  await page.click('e1');
+  console.log(await page.title(), page.problems());
+} finally {
+  await browser.close();
+}
+```
+
+Set `OKAYD_CHROME` to use a specific Chrome, Chromium or Edge binary. Refs are
+only valid until the next snapshot.
+
 ## Roadmap
 
 - [x] Proof files, ledger, merge gate
 - [x] Ledger posted as one PR comment (updated on reruns) and in the job summary
 - [x] Playwright Test reporter and JUnit ingest for any runner
+- [x] Own Chrome driver (DevTools Protocol, no dependencies)
 - [ ] Verifier agent that attacks each criterion on the preview deployment
 - [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page

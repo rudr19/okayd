@@ -31,6 +31,10 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
+    "./driver": {
+      "types": "./dist/src/driver/index.d.ts",
+      "default": "./dist/src/driver/index.js"
+    },
     "./playwright": {
       "types": "./dist/src/playwright.d.ts",
       "default": "./dist/src/playwright.js"

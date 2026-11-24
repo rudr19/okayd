@@ -4,3 +4,4 @@ export { finalize, type FinalizeOptions, type FinalizeResult } from './finalize.
 export { parseJUnit } from './junit.js';
 export { default as OkaydPlaywrightReporter } from './playwright.js';
 export { publishToGitHub, renderComment, pullRequestNumber, COMMENT_MARKER, type GitHubEnv, type PublishResult } from './github.js';
+export * from './driver/index.js';
