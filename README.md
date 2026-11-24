@@ -63,11 +63,59 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okayd gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+## Browser driver
+
+Okayd ships its own Chrome driver with zero runtime dependencies. It speaks the
+DevTools Protocol directly over Node's built-in WebSocket (Node 22 or later) and
+is built for agents: it returns short text snapshots of the accessibility tree
+and acts by ref.
+
+```ts
+import { Browser } from 'okayd/driver';
+
+const browser = await Browser.launch();
+try {
+  const page = await browser.newPage();
+  await page.goto('https://example.com');
+  const { text } = await page.snapshot(); // - link "More information..." [ref=e1]
+  await page.click('e1');
+  console.log(await page.title(), page.problems());
+} finally {
+  await browser.close();
+}
+```
+
+Set `OKAYD_CHROME` to use a specific Chrome, Chromium or Edge binary. Refs are
+only valid until the next snapshot.
+
+## Use with coding agents
+
+`okayd mcp` runs an MCP server over stdio (no dependencies) so Claude Code,
+Cursor and Codex can check the definition of done before they claim a task is
+finished. For Claude Code, add this to `.mcp.json`:
+
+```json
+{ "mcpServers": { "okayd": { "command": "npx", "args": ["okayd", "mcp"] } } }
+```
+
+Tools (all take an optional `dir`, default `.okayd`, which must stay inside the
+working directory):
+
+- `okayd_criteria` lists criteria and the `[okayd:<issue>.<n>]` tag for each test title.
+- `okayd_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
+- `okayd_ingest_junit` builds ledgers from a JUnit XML report.
+- `okayd_add_criterion` appends a criterion. Agents can add criteria but not remove or edit them.
+
+`skills/okayd/SKILL.md` is a Claude Code skill that tells agents to follow this
+loop. Copy it to `.claude/skills/okayd/SKILL.md`.
+
 ## Roadmap
 
 - [x] Proof files, ledger, merge gate
 - [x] Ledger posted as one PR comment (updated on reruns) and in the job summary
 - [x] Playwright Test reporter and JUnit ingest for any runner
+- [x] Own Chrome driver (DevTools Protocol, no dependencies)
+- [x] MCP server so coding agents check "done" through Okayd
 - [ ] Verifier agent that attacks each criterion on the preview deployment
 - [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
