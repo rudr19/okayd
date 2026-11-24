@@ -2,6 +2,9 @@
 
 **Your agent says it's done. Okayd proves it, criterion by criterion.**
 
+> Browser agents act. Test frameworks run. CI reports. **Okayd proves.**
+> [Why Okayd](WHY-OKAYD.md) · [Vision](VISION.md) · [Roadmap](ROADMAP.md) · [Governance](GOVERNANCE.md) · [Security](SECURITY.md)
+
 Okayd checks a pull request against the acceptance criteria in its issue.
 The criteria go in a proof file in the repo. Tests claim criteria by tag. The
 run ends with a ledger that marks each criterion **met**, **failed** or
@@ -123,4 +126,6 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 ## License
 
 Apache-2.0 for this package. Copyright © 2026 Rudra Kumar Pandey. "Okayd" is a
-trademark of its author. Contributions need a signed CLA (see `CLA.md`).
+trademark of its author; see [TRADEMARK.md](TRADEMARK.md). Contributions need a
+signed CLA (see [CLA.md](CLA.md)). Official releases are published only by this
+repo's release workflow, with npm provenance.
