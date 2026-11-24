@@ -26,3 +26,8 @@ jobs:
         run: |
           echo "$SUMMARY"
           [ "$PROVEN" = "true" ]
+      - name: Proof file matches the fixture issue (offline sync --check)
+        run: >-
+          node dist/src/cli.js sync --issue 1 --check
+          --body-file examples/action-fixture/issue-1.md
+          examples/action-fixture/.okayd

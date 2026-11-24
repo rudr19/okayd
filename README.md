@@ -77,6 +77,28 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okayd gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+## Keep criteria in sync with the issue
+
+The GitHub issue is the source of truth. Instead of copying its checkboxes by hand:
+
+```sh
+npx okayd sync --issue 142            # needs GITHUB_REPOSITORY (or --repo owner/name) and GITHUB_TOKEN/GH_TOKEN
+npx okayd sync --issue 142 --body-file issue.md [--title "Pro upgrade"]   # offline
+npx okayd sync --issue 142 --check    # CI: change nothing, exit 1 on drift
+```
+
+This writes `.okayd/142.md` (or the `[dir]` you pass; it must be inside the current directory). Rules:
+
+- `- [ ]`, `- [x]` and `* [ ]` lines count; checkboxes inside fenced code blocks do not.
+- If the issue has a heading named "Acceptance criteria" (any level), only the checkboxes under it count, up to the next heading of the same or higher level. Otherwise all checkboxes count.
+- On an existing file, criteria already there keep their order and ids, new ones are appended, deleted ones are removed. Reordering in the issue alone is not drift.
+- Ids are positional (`142.<n>`), so removing a middle criterion renumbers the later ones. Okayd prints a warning listing `[okayd:142.3] -> [okayd:142.2]` so you can re-tag those tests.
+- The file is rewritten from the issue, so hand-added notes in it are lost. An edited checkbox counts as one removed and one added.
+- With `--body-file` the title comes from `--title`, else the first heading that is not "Acceptance criteria", else the file's current title.
+- `--check` fails with "proof file is out of date with issue #n; run okayd sync".
+
+In the Action, `sync: check` (the default) does this on every run. It uses the `issue` input, or else the issues the PR body closes ("Closes #N", "Fixes #N", "Resolves #N" in the same repo, ignoring code blocks and HTML comments) that already have a proof file in `dir`. `sync: write` only rewrites the files in the workspace; committing them is up to your workflow. `sync: off` skips it.
+
 ## GitHub Action
 
 Okayd ships as a composite action. Run your tests so they write JUnit XML, then
@@ -108,7 +130,8 @@ jobs:
 
 Inputs: `results` (JUnit XML path, optional), `dir` (default `.okayd`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
-`node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+`issue` (issue number to sync from; default: detected from the PR body),
+`sync` (`check` default, `write` or `off`), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as

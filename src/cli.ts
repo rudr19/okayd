@@ -3,6 +3,9 @@
 //                                 validate proof files and print each criterion's tag;
 //                                 with --issue-body, fail if the issue's checkboxes differ
 
+// okayd sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir]
+//                                 write .okayd/<n>.md from the GitHub issue (or a body file);
+//                                 with --check, change nothing and exit 1 if it would change
 // okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
 // okayd gate   [dir] [--allow-empty]
 //                                 exit 1 unless every proof file has a fresh, fully met ledger
@@ -10,6 +13,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, compareToIssueBody } from './proof.js';
+import { fetchIssue, syncProofFile, describeSync } from './sync.js';
 import { evaluateGate } from './gate.js';
 import { parseJUnit } from './junit.js';
 import { parseCTRF } from './ctrf.js';
@@ -18,7 +22,7 @@ import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model
 import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 
-const USAGE = 'Usage: okayd check [dir] [--issue-body <file> [--issue N]] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] [--allow-empty] | okayd mcp | okayd verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okayd check [dir] [--issue-body <file> [--issue N]] | okayd sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] [--allow-empty] | okayd mcp | okayd verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 const args: string[] = [];
@@ -94,6 +98,85 @@ function positional(list: string[], valued: string[]): string[] {
   }
   return out;
 }
+/** okayd sync: parses its own flags because --check is a bare switch. */
+async function runSync(): Promise<number> {
+  const valued = new Set(['issue', 'repo', 'body-file', 'title']);
+  const v = new Map<string, string>();
+  let check = false;
+  const rest: string[] = [];
+  const list = args.slice(1);
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!;
+    if (a === '--check') check = true;
+    else if (a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      const k = eq === -1 ? a.slice(2) : a.slice(2, eq);
+      if (!valued.has(k)) {
+        console.error(`Unknown option ${a}. ${USAGE}`);
+        return 2;
+      }
+      const val = eq === -1 ? list[++i] : a.slice(eq + 1);
+      if (val === undefined) {
+        console.error(`--${k} needs a value. ${USAGE}`);
+        return 2;
+      }
+      v.set(k, val);
+    } else rest.push(a);
+  }
+  const raw = v.get('issue');
+  if (raw === undefined || !/^#?[1-9]\d{0,8}$/.test(raw)) {
+    console.error(`Name the issue with --issue <positive number>. ${USAGE}`);
+    return 2;
+  }
+  const issue = Number(raw.replace(/^#/, ''));
+  const dir = rest[0] ?? '.okayd';
+  let title: string | undefined = v.get('title');
+  let body: string;
+  const bodyFile = v.get('body-file');
+  if (bodyFile !== undefined) {
+    body = await readFile(bodyFile, 'utf8');
+    if (title === undefined) {
+      for (const line of body.split(/\r?\n/)) {
+        const h = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+        if (h && !/^acceptance criteria:?$/i.test(h[1]!)) {
+          title = h[1];
+          break;
+        }
+      }
+    }
+    if (title === undefined) {
+      // Keep the title the proof file already has, if any.
+      try {
+        title = parseProof(await readFile(join(dir, `${issue}.md`), 'utf8')).title;
+      } catch {
+        title = `Issue #${issue}`;
+      }
+    }
+  } else {
+    const repo = v.get('repo') ?? process.env.GITHUB_REPOSITORY;
+    if (!repo) {
+      console.error(`Name the repository with --repo owner/name or GITHUB_REPOSITORY, or use --body-file. ${USAGE}`);
+      return 2;
+    }
+    const fetched = await fetchIssue({
+      repo,
+      issue,
+      token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
+      apiUrl: process.env.GITHUB_API_URL,
+    });
+    title = title ?? fetched.title;
+    body = fetched.body;
+  }
+  const result = await syncProofFile({ dir, issue, title, body, write: !check });
+  const { lines, warnings } = describeSync(issue, result, !check);
+  for (const l of lines) console.log(l);
+  for (const w of warnings) console.error(w);
+  if (check && result.changed) {
+    console.error(`proof file is out of date with issue #${issue}; run okayd sync`);
+    return 1;
+  }
+  return 0;
+}
 const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
@@ -130,6 +213,7 @@ async function main(): Promise<number> {
     for (const t of drift.onlyInProof) console.error(`  in the proof file, missing from the issue: ${t}`);
     return 1;
   }
+  if (cmd === 'sync') return runSync();
   if (cmd === 'ingest') {
     const file = args[1];
     if (!file) {
