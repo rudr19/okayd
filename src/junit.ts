@@ -5,7 +5,9 @@
 import type { TestOutcome } from './ledger.js';
 
 const TESTCASE = /<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g;
-const ATTR = /([\w:-]+)\s*=\s*"([^"]*)"/g;
+// An attribute name must follow whitespace, so a failed match can't rescan the
+// same run of characters from every position (CodeQL js/polynomial-redos).
+const ATTR = /(?<=\s)([\w:-]+)\s*=\s*"([^"]*)"/g;
 
 function decode(s: string): string {
   return s

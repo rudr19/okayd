@@ -34,7 +34,19 @@ export interface RefEntry {
   nth: number;
 }
 
-const REF_LINE = /^\s*- (\S+)(?: ("(?:[^"\\]|\\.)*"))?.*?\[ref=(e\d+)\]/;
+// Three linear regexes instead of one with a lazy wildcard, which could run in
+// polynomial time on crafted input (CodeQL js/polynomial-redos).
+const LINE_ROLE = /^\s*- (\S+)/;
+const LINE_NAME = /^\s*- \S+ ("(?:[^"\\]|\\.)*")/;
+const LINE_REF = /\[ref=(e\d+)\]/;
+const REF_LINE = {
+  exec(line: string): [string, string, string | undefined, string] | null {
+    const role = LINE_ROLE.exec(line);
+    const ref = LINE_REF.exec(line);
+    if (!role || !ref) return null;
+    return [line, role[1]!, LINE_NAME.exec(line)?.[1], ref[1]!];
+  },
+};
 
 /** Reads every interactive element out of snapshot text, with its role, name and nth. */
 export function parseSnapshotRefs(text: string): RefEntry[] {

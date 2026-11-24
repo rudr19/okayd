@@ -1,6 +1,6 @@
 // The four Okayd tools an agent can call over MCP. Handlers take a `cwd`
 // so tests (and embedders) never depend on process.cwd().
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseProof, type ProofFile } from '../proof.js';
 import { parseJUnit } from '../junit.js';
@@ -90,11 +90,18 @@ async function loadProofs(dirAbs: string, shown: string, issue: string | undefin
   const out: LoadedProof[] = [];
   for (const file of md) {
     const full = join(dirAbs, file);
-    const mtimeMs = (await stat(full)).mtimeMs;
+    // One handle for both, so the time and the text come from the same file
+    // (CodeQL js/file-system-race).
+    const fh = await open(full, 'r');
     try {
-      out.push({ file, proof: parseProof(await readFile(full, 'utf8')), mtimeMs });
-    } catch (e) {
-      out.push({ file, error: (e as Error).message, mtimeMs });
+      const mtimeMs = (await fh.stat()).mtimeMs;
+      try {
+        out.push({ file, proof: parseProof(await fh.readFile('utf8')), mtimeMs });
+      } catch (e) {
+        out.push({ file, error: (e as Error).message, mtimeMs });
+      }
+    } finally {
+      await fh.close();
     }
   }
   return out;
