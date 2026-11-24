@@ -26,7 +26,7 @@ and it works on top of all of them.
    Today the ledger records the verdict and the evidence behind it; the full
    ladder is planned.
 5. **Neutral across vendors.** okproof audits runs from any agent or test
-   runner (Playwright, Vitest, Jest, pytest, Cypress, Go, e2e) through open
+   runner (Playwright, Vitest, Jest, pytest, Cypress, Go) through open
    JUnit XML and CTRF formats. It does not care which agent wrote the change.
 
 ### Evidence Levels (planned model)
@@ -92,21 +92,6 @@ Ledgers are plain JSON in your repo. They are **not signed**: anyone with write
 access can hand-write one, and the gate only checks that ledger ids and text
 match the proof file. Signed ledgers and a hosted proof page are
 [roadmap](README.md#project), not shipped.
-
-## The landscape (November 2026)
-
-Star counts from the GitHub API, 24 November 2026.
-
-| Group | Projects | What they do | What they don't do |
-|---|---|---|---|
-| **Browser agents** | browser-use (122K), Stagehand (26K), Skyvern (24K), Steel (8K) | Let an agent operate websites | Know what "correct" means for your app |
-| **Agent browser tools / MCP** | chrome-devtools-mcp (59K), agent-browser (54K), playwright-mcp (40K), Lightpanda (43K) | Give coding agents eyes and hands in a browser | Keep a record of which criteria were checked, or block a merge |
-| **Test frameworks** | Playwright (101K) | Run tests a person wrote | Link a test to the requirement it covers |
-| **Natural-language / agentic E2E** | Midscene (16K), e2e (14K), Shortest (6K) | Write or run tests in plain language | Treat the spec as a contract; refuse "untested" as a pass |
-| **CI engines and reporting** | act (73K), Dagger (17K), CTRF reporter | Run pipelines, show test results | Say whether the *feature* is done |
-
-All of these are good at what they do. okproof sits on top of them, not against
-them.
 
 ## The gaps okproof addresses
 

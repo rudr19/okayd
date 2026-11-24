@@ -2,7 +2,8 @@ name: Release
 
 # The only way an official okproof version is published. Runs when a GitHub
 # release is published from a v* tag on main. Publishes to npm with a
-# provenance attestation and attests the tarball, so anyone can verify which
+# provenance attestation, attests the tarball and attaches the tarball and its
+# attestation bundle to the release, so anyone can verify which
 # commit and workflow built it (npm audit signatures / gh attestation verify).
 on:
   release:
@@ -39,15 +40,58 @@ jobs:
       - run: npm test
       - run: npm pack
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        id: attest
         with:
           subject-path: okproof-*.tgz
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Hand the tarball and its attestation bundle to the release-assets job,
+      # which is the only job here that may write to the release.
+      - name: Collect release assets
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          mkdir release-assets
+          cp "okproof-$version.tgz" release-assets/
+          cp "$BUNDLE_PATH" "release-assets/okproof-$version.intoto.jsonl"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-assets
+          path: release-assets/
+          if-no-files-found: error
+
+  # Attaches the packed tarball and its build-provenance attestation bundle to
+  # the GitHub release, so the release carries a signed artifact (OpenSSF
+  # Scorecard "Signed-Releases"). Runs only after a successful publish.
+  release-assets:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          shopt -s nullglob
+          files=(release-assets/okproof-*.tgz release-assets/okproof-*.intoto.jsonl)
+          if [ "${#files[@]}" -ne 2 ]; then
+            echo "::error::expected one tarball and one attestation bundle, found ${#files[@]} files"
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --repo "$REPO" --clobber
 
   # Moves the major tag (v0) to the released commit so `uses: rudr19/okproof@v0`
   # follows the latest release. Runs only after a successful publish, and holds
-  # the only contents: write permission in this workflow.
+  # contents: write, as does release-assets (each job scopes its own).
   move-major-tag:
     needs: publish
     runs-on: ubuntu-latest

@@ -12,10 +12,10 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 async function project(strongBody = 'assert.equal(1 + 1, 2);') {
   const root = await mkdtemp(join(tmpdir(), 'okproof-lint-ledger-'));
   await mkdir(join(root, '.okproof'));
-  await mkdir(join(root, 'e2e'));
+  await mkdir(join(root, 'ui'));
   await writeFile(join(root, '.okproof', '1.md'), '## #1 Demo\n- [ ] Upload a file\n- [ ] Download a file\n');
   await writeFile(
-    join(root, 'e2e', 'a.test.ts'),
+    join(root, 'ui', 'a.test.ts'),
     `test('upload a file [okproof:1.1]', async () => {\n  await upload();\n});\ntest('download a file [okproof:1.2]', async () => {\n  ${strongBody}\n  // download a file\n});\n`,
   );
   // node's JUnit has no assertion counts
@@ -54,7 +54,7 @@ test('ingest --lint <path> limits the scan; a path with no matching test leaves 
   assert.equal(run(root, ['ingest', 'junit.xml', '--lint', 'other']).status, 0);
   const l = JSON.parse(await readFile(join(root, '.okproof', 'ledger-1.json'), 'utf8'));
   assert.equal(l.entries[0].verdict, 'met');
-  const r = run(root, ['ingest', 'junit.xml', '--lint=e2e/**/*.test.ts']);
+  const r = run(root, ['ingest', 'junit.xml', '--lint=ui/**/*.test.ts']);
   assert.equal(r.status, 0, r.stderr);
   assert.equal(JSON.parse(await readFile(join(root, '.okproof', 'ledger-1.json'), 'utf8')).entries[0].verdict, 'unproven');
 });
@@ -135,9 +135,9 @@ test('scanner stays linear on a line of unclosed regex starts', () => {
 });
 
 test('globMatch: *, **, ? and literals', () => {
-  assert.ok(globMatch('e2e/**/*.spec.ts', 'e2e/a.spec.ts'));
-  assert.ok(globMatch('e2e/**/*.spec.ts', 'e2e/x/y/a.spec.ts'));
-  assert.ok(!globMatch('e2e/*.spec.ts', 'e2e/x/a.spec.ts'));
+  assert.ok(globMatch('ui/**/*.spec.ts', 'ui/a.spec.ts'));
+  assert.ok(globMatch('ui/**/*.spec.ts', 'ui/x/y/a.spec.ts'));
+  assert.ok(!globMatch('ui/*.spec.ts', 'ui/x/a.spec.ts'));
   assert.ok(globMatch('**/a.test.ts', 'a.test.ts'));
   assert.ok(globMatch('src/**', 'src/a/b'));
   assert.ok(globMatch('t?st.js', 'test.js'));

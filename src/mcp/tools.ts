@@ -349,7 +349,7 @@ const okproof_lint: ToolDefinition = {
     type: 'object',
     properties: {
       dir: { type: 'string', description: 'Project root to scan, relative to the working directory. Default ".". Proof files are read from <dir>/.okproof.' },
-      tests: { type: 'string', description: 'Limit the scan to this directory, file or simple glob (relative to dir), e.g. "e2e" or "e2e/**/*.spec.ts".' },
+      tests: { type: 'string', description: 'Limit the scan to this directory, file or simple glob (relative to dir), e.g. "tests/ui" or "tests/**/*.spec.ts".' },
       strictRelevance: { type: 'boolean', description: 'Treat "possibly unrelated" findings as failures. Default false (advisory).' },
     },
     additionalProperties: false,

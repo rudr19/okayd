@@ -35,7 +35,7 @@ inputs:
     required: false
     default: 'true'
   lint:
-    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "e2e/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
+    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
     required: false
     default: auto
   node-version:

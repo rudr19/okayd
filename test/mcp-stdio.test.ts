@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js');
 
 test('okproof mcp speaks MCP over stdio', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'okproof-e2e-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'okproof-stdio-'));
   await mkdir(join(cwd, '.okproof'));
   await writeFile(join(cwd, '.okproof', '5.md'), '## #5 Demo\n- [ ] It works\n');
 

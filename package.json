@@ -1,6 +1,6 @@
 {
   "name": "okproof",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Prove agent-written pull requests against their acceptance criteria. Works with Playwright Test or any runner that writes JUnit XML.",
   "license": "Apache-2.0",
   "author": "Rudra Kumar Pandey",
@@ -35,8 +35,9 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
-    "@types/node": "22.10.2"
+    "@types/node": "22.10.2",
+    "fast-check": "3.23.2",
+    "typescript": "5.6.3"
   },
   "engines": {
     "node": ">=20"

@@ -3,7 +3,7 @@
 Official versions are published only by `.github/workflows/release.yml`, when a
 GitHub release is published. The workflow runs the tests, checks that the tag
 equals `package.json`'s version, publishes to npm with a provenance
-attestation, attests the tarball, and then moves the `v0` tag to the released
+attestation, attests the tarball, attaches the tarball and its attestation bundle (okproof-<version>.intoto.jsonl) to the release, and then moves the `v0` tag to the released
 commit so `uses: rudr19/okproof@v0` follows it.
 
 Nobody publishes from a laptop. Never run `npm publish` by hand: it would ship

@@ -6,17 +6,28 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
 ### Added
-- JUnit: a passing `<testcase>` with `<flakyFailure>`, `<flakyError>`, `<rerunFailure>`, `<rerunError>` or a non-zero `rerun` property is `flaky`, never met.
-- `okproof lint` flags tagged tests whose only assertions are trivial (`expect(true).toBe(true)`, `assert True`, ...) as weak.
-- `okproof lint` warns when a tagged test never mentions any key word of its criterion ("possibly unrelated"). Advisory; `--strict-relevance` makes it fail. Also in `lintTests()` and the `okproof_lint` MCP tool.
 
 - `okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]`: one-step setup of `.okproof/`, a CI workflow, and agent files (AGENTS.md, CLAUDE.md, skill, `.mcp.json`). Never overwrites.
+- Lint findings feed the ledger: `okproof ingest <results> --lint [path|glob]` and `okproof gate --results <file> --lint [path|glob]` mark tests lint finds weak (no or trivial assertions) as asserting nothing, so their criterion is `unproven` even when the runner reports no assertion counts. Matched by tag and title. The Action has a `lint` input (`auto`, a path or glob, or `off`).
+- JUnit: a passing `<testcase>` with `<flakyFailure>`, `<flakyError>`, `<rerunFailure>`, `<rerunError>` or a non-zero `rerun` property is `flaky`, never met.
+- `okproof lint` flags tagged tests whose only assertions are trivial (`expect(true).toBe(true)`, `assert True`, ...) as weak, and warns when a tagged test never mentions any key word of its criterion ("possibly unrelated"; advisory, `--strict-relevance` makes it fail). Also in `lintTests()` and the new `okproof_lint` MCP tool.
+- `okproof gate --results <file>`: rebuild ledgers in memory from this job's test results and ignore committed ones; `--require-issues 142,143`; results and proof sha256 recorded in ledgers. See docs/trust.md.
+- Linked-issue enforcement in the Action (`require-linked`): a PR that closes an issue with no proof file fails the gate.
+- Verifier: per-detector attribution of findings (`--strict-detectors` restores page-global attribution); authentication with `--storage-state`, `--header` and `--login`.
+- Stable criterion ids, `{#id}` prefix on a criterion line (docs/stable-ids.md).
+- Property-based tests (fast-check, a dev dependency only) for the parsers, issue sync, lint scanner and ledger invariants.
+- Release workflow attaches the packed tarball and its build-provenance attestation bundle (`okproof-<version>.intoto.jsonl`) to the GitHub release.
 
 ### Changed
 
-- Docs say precisely what is checked; signed ledgers and the hosted proof page are marked roadmap.
-- VISION.md and WHY-OKPROOF.md merged into WHY.md; GOVERNANCE.md and ROADMAP.md folded into the README "Project" section and CONTRIBUTING.md.
+- The gate is the single source of truth: the Action `proven` output, the PR comment headline and MCP `okproof_status` all use `evaluateGate`. GitHub posting is more robust. `verify-<issue>.json` records a `criteriaHash`, and stale verifier results fail the gate.
+- Relevance check treats regex and template literals in the test body as text. The lint scanner tells a regex from a division by the preceding token.
+- `--tests` globs are matched by a plain string matcher (no regular expression built from the pattern), with a 512 character limit.
+- `@anthropic-ai/sdk` peer dependency is pinned to `>=1.0.0 <2.0.0`.
+- Docs say precisely what is checked; signed ledgers and the hosted proof page are marked roadmap. WHY.md replaces the vision and rationale documents; governance and roadmap moved into the README "Project" section and CONTRIBUTING.md. CODEOWNERS protection for `.okproof/` is documented. README rewritten around a quick start.
 
 ## [0.1.0] - 2026-11-24
 

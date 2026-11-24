@@ -66,7 +66,6 @@ Write JUnit XML (or CTRF JSON), then `npx okproof ingest <file>`.
 | pytest | `python -m pytest --junitxml=junit.xml` | `npx okproof ingest junit.xml` |
 | Cypress | `npx cypress run --reporter junit --reporter-options mochaFile=junit.xml` | `npx okproof ingest junit.xml` |
 | Go | `gotestsum --junitfile junit.xml ./...` (needs gotestsum) | `npx okproof ingest junit.xml` |
-| e2e | its built-in `junit` reporter (see the e2e docs for the flag and output path) | `npx okproof ingest <that file>` |
 | Anything with CTRF | a CTRF reporter writing `ctrf-report.json` | `npx okproof ingest ctrf-report.json` |
 
 ## Install
@@ -224,7 +223,7 @@ A static check that needs no test run:
 
 ```bash
 npx okproof lint                       # scan the working directory
-npx okproof lint --tests e2e           # limit to a path, file or glob such as "e2e/**/*.spec.ts"
+npx okproof lint --tests tests/ui      # limit to a path, file or glob such as "tests/**/*.spec.ts"
 ```
 
 It finds tests whose title has `[okproof:<id>]` and reports the ones with no
@@ -246,6 +245,24 @@ reads the indented block (Python). Put the tag in the test title. A test
 that only calls a helper which asserts is reported weak, and a tag in a comment
 above a test is not followed. Treat a hit as a prompt to look, not a verdict.
 The ledger counts from your runner are the authority.
+
+Some runners report no assertion counts at all (JUnit from `node --test`, for
+example), so a test with no assertion would be marked met. Feed lint into the
+ledger to close that gap:
+
+```bash
+npx okproof ingest junit.xml --lint            # scan every test file under the working directory
+npx okproof ingest junit.xml --lint tests/ui   # or a path or glob (`--lint=<path>` also works)
+npx okproof gate --results junit.xml --lint
+```
+
+A test lint finds weak (no assertion, or only trivial ones) is counted as having
+asserted nothing, so its criterion is `unproven`. Lint findings are matched to
+results by the `[okproof:<id>]` tag plus the test title. A count your runner
+does report stands, except for tests lint calls trivial. Relevance stays
+advisory unless you add `--strict-relevance`. After a bare `--lint`, a
+following word is read as the path; write `--lint=` to put the proof folder
+after it. `gate --lint` needs `--results`.
 
 #### Possibly unrelated tests
 
@@ -336,7 +353,7 @@ jobs:
 Inputs: `results` (JUnit XML path, optional), `dir` (default `.okproof`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
 `issue` (issue number to sync from; default: detected from the PR body),
-`sync` (`check` default, `write` or `off`), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+`sync` (`check` default, `write` or `off`), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as
