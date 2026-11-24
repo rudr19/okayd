@@ -1,4 +1,4 @@
-// `npm run demo`: an agent says "Done (5/5)". Okayd checks the claim.
+// `npm run demo`: an agent says "Done (5/5)". okproof checks the claim.
 //
 // Everything is local and scripted. No model API is called and no credential is
 // read: the "agent" is a fixed message (AGENT_CLAIM.md), and the verifier runs
@@ -16,7 +16,7 @@ const rel = (...p) => relative(root, join(here, ...p)).replace(/\\/g, '/');
 // DEMO_OUT redirects the output folder (the test uses it to leave the committed files alone).
 const outAbs = process.env.DEMO_OUT ? resolve(process.env.DEMO_OUT) : join(here, 'out');
 const OUT = relative(root, outAbs).replaceAll('\\', '/');
-const DIR = `${OUT}/.okayd`;
+const DIR = `${OUT}/.okproof`;
 const JUNIT = `${OUT}/junit.xml`;
 const CLI = 'dist/src/cli.js';
 
@@ -90,15 +90,15 @@ const server = await startServer();
 let outcome;
 try {
   // Fresh output folder, with the proof file copied in so the source stays clean.
-  rmSync(resolve(root, OUT, '.okayd'), { recursive: true, force: true });
+  rmSync(resolve(root, OUT, '.okproof'), { recursive: true, force: true });
   rmSync(resolve(root, JUNIT), { force: true });
   mkdirSync(resolve(root, DIR), { recursive: true });
-  copyFileSync(join(here, '.okayd', '101.md'), resolve(root, DIR, '101.md'));
+  copyFileSync(join(here, '.okproof', '101.md'), resolve(root, DIR, '101.md'));
 
   console.log(`App: ${server.url}  (Team notes, issue #101)\n`);
 
   // 1. The tests, with node's own junit reporter. A failing test must not stop the demo.
-  console.log('1. Running the browser tests (node:test, junit reporter, Okayd driver)...');
+  console.log('1. Running the browser tests (node:test, junit reporter, okproof driver)...');
   const tests = await run(
     ['--test', '--test-reporter=junit', `--test-reporter-destination=${JUNIT}`, rel('tests', 'notes.test.mjs')],
     { DEMO_URL: server.url },
@@ -111,7 +111,7 @@ try {
 
   // 2. The verifier, scripted: its claim only counts if a fresh-browser replay reproduces it.
   console.log('2. Verifier on criterion 101.4 (ScriptedModel, no model API), then replay in a fresh browser...');
-  const proof = parseProof(readFileSync(join(here, '.okayd', '101.md'), 'utf8'));
+  const proof = parseProof(readFileSync(join(here, '.okproof', '101.md'), 'utf8'));
   const criterion = proof.criteria.find((c) => c.id === '101.4');
   const result = await verifyOne(criterion, { dir: DIR, baseUrl: server.url, model: scriptedVerifier(), maxSteps: 12 });
   const confirmed = result.findings.filter((f) => f.confirmed);
@@ -122,9 +122,9 @@ try {
   );
 
   // 3. Ingest the junit file (the verifier's result is folded in), then gate.
-  console.log('3. okayd ingest, then okayd gate...');
-  const ingest = await run([CLI, 'ingest', JUNIT, DIR], { OKAYD_NO_COMMENT: '1' }); // GitHub publishing off
-  if (ingest.status !== 0) throw new Error(`okayd ingest failed:\n${ingest.stdout}${ingest.stderr}`);
+  console.log('3. okproof ingest, then okproof gate...');
+  const ingest = await run([CLI, 'ingest', JUNIT, DIR], { OKPROOF_NO_COMMENT: '1' }); // GitHub publishing off
+  if (ingest.status !== 0) throw new Error(`okproof ingest failed:\n${ingest.stdout}${ingest.stderr}`);
   const gate = await run([CLI, 'gate', DIR]);
   const ledger = JSON.parse(readFileSync(resolve(root, DIR, 'ledger-101.json'), 'utf8'));
   copyFileSync(resolve(root, DIR, 'ledger-101.md'), resolve(root, OUT, 'ledger-101.md'));
@@ -158,11 +158,11 @@ const failed = count('failed');
 const untested = count('untested');
 const total = ledger.entries.length;
 const agentSays = `Agent says: Done (${total}/${total})`;
-const okaydSays = `Okayd: ${met} met · ${failed} failed · ${untested} untested — ${ledger.proven ? 'PROVEN' : 'NOT PROVEN'}`;
+const okproofSays = `okproof: ${met} met · ${failed} failed · ${untested} untested — ${ledger.proven ? 'PROVEN' : 'NOT PROVEN'}`;
 
 const GLYPH = { met: 'met     ', failed: 'FAILED  ', untested: 'untested' };
 const rule = '='.repeat(64);
-console.log(['', rule, '  ' + agentSays, '  ' + okaydSays, rule].join('\n'));
+console.log(['', rule, '  ' + agentSays, '  ' + okproofSays, rule].join('\n'));
 for (const e of ledger.entries) console.log('  ' + GLYPH[e.verdict] + '  ' + e.id + '  ' + e.text);
 console.log(rule);
 console.log(`Verifier (scripted): ${result.criterionId} ${result.verdict.toUpperCase()}, ${confirmed.length ? 'confirmed by replay in a fresh browser' : 'not confirmed by replay'}`);

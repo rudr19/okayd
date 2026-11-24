@@ -82,7 +82,7 @@ const pipes = (s: string): string => s.replace(/\|/g, '\\|');
 export function renderLedgerMarkdown(ledger: Ledger): string {
   const met = ledger.entries.filter((e) => e.verdict === 'met').length;
   const lines = [
-    `### Okayd · #${ledger.issue} ${ledger.title}`,
+    `### okproof · #${ledger.issue} ${ledger.title}`,
     '',
     `${ledger.proven ? 'Proven' : 'Not proven'}: ${met} of ${ledger.entries.length} criteria met.`,
     '',

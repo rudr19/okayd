@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-// okayd check  [dir] [--issue-body <file> [--issue N]]
+// okproof check  [dir] [--issue-body <file> [--issue N]]
 //                                 validate proof files and print each criterion's tag;
 //                                 with --issue-body, fail if the issue's checkboxes differ
 
-// okayd sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir]
-//                                 write .okayd/<n>.md from the GitHub issue (or a body file);
+// okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir]
+//                                 write .okproof/<n>.md from the GitHub issue (or a body file);
 //                                 with --check, change nothing and exit 1 if it would change
-// okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
-// okayd gate   [dir] [--allow-empty]
+// okproof ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
+// okproof gate   [dir] [--allow-empty]
 //                                 exit 1 unless every proof file has a fresh, fully met ledger
-// okayd lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
-// okayd mcp                       serve Okayd to coding agents over MCP (stdio)
+// okproof lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
+// okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, compareToIssueBody } from './proof.js';
@@ -24,11 +24,11 @@ import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 
-const USAGE = 'Usage: okayd check [dir] [--issue-body <file> [--issue N]] | okayd sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] [--allow-empty] | okayd lint [--tests <path|glob>] [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
-let strictAssertions = process.env.OKAYD_STRICT_ASSERTIONS === '1';
+let strictAssertions = process.env.OKPROOF_STRICT_ASSERTIONS === '1';
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--strict-assertions') strictAssertions = true;
@@ -39,7 +39,7 @@ for (let i = 0; i < argv.length; i++) {
   else args.push(argv[i]);
 }
 
-// okayd verify --url <baseUrl> [--issue N] [--dir .okayd] [--max-steps 15] [--model id] [--effort e] [--replay-only]
+// okproof verify --url <baseUrl> [--issue N] [--dir .okproof] [--max-steps 15] [--model id] [--effort e] [--replay-only]
 function flags(argv: string[]): Map<string, string | true> {
   const out = new Map<string, string | true>();
   for (let i = 0; i < argv.length; i++) {
@@ -55,13 +55,13 @@ function flags(argv: string[]): Map<string, string | true> {
 async function runVerify(): Promise<number> {
   const f = flags(args.slice(1));
   const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
-  const dir = str('dir') ?? '.okayd';
+  const dir = str('dir') ?? '.okproof';
   const issue = str('issue');
   const url = str('url');
   if (f.get('replay-only') === true) {
-    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKAYD_CHROME });
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME });
     if (results.length === 0) {
-      console.error(`No repro files in ${dir}/repro. Run okayd verify first.`);
+      console.error(`No repro files in ${dir}/repro. Run okproof verify first.`);
       return 2;
     }
     let reproduced = false;
@@ -105,7 +105,7 @@ function positional(list: string[], valued: string[]): string[] {
   }
   return out;
 }
-/** okayd sync: parses its own flags because --check is a bare switch. */
+/** okproof sync: parses its own flags because --check is a bare switch. */
 async function runSync(): Promise<number> {
   const valued = new Set(['issue', 'repo', 'body-file', 'title']);
   const v = new Map<string, string>();
@@ -136,7 +136,7 @@ async function runSync(): Promise<number> {
     return 2;
   }
   const issue = Number(raw.replace(/^#/, ''));
-  const dir = rest[0] ?? '.okayd';
+  const dir = rest[0] ?? '.okproof';
   let title: string | undefined = v.get('title');
   let body: string;
   const bodyFile = v.get('body-file');
@@ -179,7 +179,7 @@ async function runSync(): Promise<number> {
   for (const l of lines) console.log(l);
   for (const w of warnings) console.error(w);
   if (check && result.changed) {
-    console.error(`proof file is out of date with issue #${issue}; run okayd sync`);
+    console.error(`proof file is out of date with issue #${issue}; run okproof sync`);
     return 1;
   }
   return 0;
@@ -195,13 +195,13 @@ async function main(): Promise<number> {
       console.error(`--issue-body needs a file holding the issue text. ${USAGE}`);
       return 2;
     }
-    const dir = positional(args.slice(1), ['issue-body', 'issue'])[0] ?? '.okayd';
+    const dir = positional(args.slice(1), ['issue-body', 'issue'])[0] ?? '.okproof';
     const proofs = [];
     for (const name of (await readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('ledger-'))) {
       const proof = parseProof(await readFile(join(dir, name), 'utf8'));
       proofs.push(proof);
       console.log(`#${proof.issue} ${proof.title}`);
-      for (const c of proof.criteria) console.log(`  [okayd:${c.id}] ${c.text}`);
+      for (const c of proof.criteria) console.log(`  [okproof:${c.id}] ${c.text}`);
     }
     if (bodyFile === undefined) return 0;
     const wanted = value('issue');
@@ -235,16 +235,16 @@ async function main(): Promise<number> {
     const kind = format ?? (file.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{') ? 'ctrf' : 'junit');
     const outcomes = kind === 'ctrf' ? parseCTRF(text) : parseJUnit(text);
     const { lines } = await finalize(outcomes, {
-      dir: args[2] ?? '.okayd',
+      dir: args[2] ?? '.okproof',
       // The GitHub Action sets this when its `comment` input is false.
-      github: process.env.OKAYD_NO_COMMENT !== '1',
+      github: process.env.OKPROOF_NO_COMMENT !== '1',
       strictAssertions,
     });
     for (const line of lines) console.log(line);
     return 0;
   }
   if (cmd === 'gate') {
-    const dir = positional(args.slice(1), [])[0] ?? '.okayd';
+    const dir = positional(args.slice(1), [])[0] ?? '.okproof';
     const result = await evaluateGate(dir, { allowEmpty: args.includes('--allow-empty') });
     for (const n of result.notes) console.log(n);
     for (const p of result.problems) console.error(p);

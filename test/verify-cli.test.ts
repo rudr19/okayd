@@ -11,7 +11,7 @@ import { skip, startApp } from './verify-fixture.js';
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
 async function reproDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-cli-'));
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-cli-'));
   await mkdir(join(dir, 'repro'));
   const repro: ReproFile = {
     version: 1,
@@ -65,13 +65,13 @@ test('verify --replay-only exits 1 while the bug reproduces and 0 once it is fix
   }
 });
 
-test('verify without a key exits 2 and explains OKAYD_ANTHROPIC_API_KEY, ignoring ANTHROPIC_API_KEY', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-cli-'));
+test('verify without a key exits 2 and explains OKPROOF_ANTHROPIC_API_KEY, ignoring ANTHROPIC_API_KEY', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-cli-'));
   try {
     await writeFile(join(dir, '7.md'), '## #7 Notes\n- [ ] x\n');
-    const r = await run(['--url', 'http://127.0.0.1:1', '--dir', dir], { OKAYD_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: 'dummy-not-a-real-key' });
+    const r = await run(['--url', 'http://127.0.0.1:1', '--dir', dir], { OKPROOF_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: 'dummy-not-a-real-key' });
     assert.equal(r.status, 2, r.stdout + r.stderr);
-    assert.match(r.stderr, /OKAYD_ANTHROPIC_API_KEY/);
+    assert.match(r.stderr, /OKPROOF_ANTHROPIC_API_KEY/);
     assert.match(r.stderr, /--replay-only/);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -79,7 +79,7 @@ test('verify without a key exits 2 and explains OKAYD_ANTHROPIC_API_KEY, ignorin
 });
 
 test('verify --replay-only with no repro files exits 2', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-cli-'));
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-cli-'));
   try {
     const r = await run(['--replay-only', '--dir', dir]);
     assert.equal(r.status, 2);

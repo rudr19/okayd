@@ -4,12 +4,12 @@
 //   ISSUE set   -> exactly that issue; its proof file must exist (sync fails if not).
 //   ISSUE unset -> issues the PR body closes ("Closes #N" / "Fixes #N" / "Resolves #N")
 //                  that already have a proof file in $DIR. Linked issues without one
-//                  are skipped, since a PR may close issues Okayd does not track.
+//                  are skipped, since a PR may close issues okproof does not track.
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { linkedIssues } from '../dist/src/sync.js';
 
-const dir = process.env.DIR || '.okayd';
+const dir = process.env.DIR || '.okproof';
 const explicit = (process.env.ISSUE || '').trim();
 let issues = [];
 if (explicit) {

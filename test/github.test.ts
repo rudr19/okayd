@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { buildLedger, parseProof, publishToGitHub, pullRequestNumber, COMMENT_MARKER } from '../src/index.js';
 
 const ledger = buildLedger(parseProof('## #7 Login\n- [ ] Signs in\n- [ ] Shows errors\n'), [
-  { title: 'sign in [okayd:7.1]', status: 'passed' },
+  { title: 'sign in [okproof:7.1]', status: 'passed' },
 ]);
 
 interface Call { url: string; method: string; body?: string }
@@ -20,7 +20,7 @@ function fakeFetch(existing: Array<{ id: number; body: string }>, calls: Call[])
 }
 
 async function tmp() {
-  return mkdtemp(join(tmpdir(), 'okayd-'));
+  return mkdtemp(join(tmpdir(), 'okproof-'));
 }
 
 test('does nothing outside GitHub Actions', async () => {

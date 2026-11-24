@@ -4,7 +4,7 @@ export { finalize, type FinalizeOptions, type FinalizeResult } from './finalize.
 export { lintTests, type LintOptions, type LintResult, type LintFinding } from './lint.js';
 export { parseJUnit } from './junit.js';
 export { parseCTRF } from './ctrf.js';
-export { default as OkaydPlaywrightReporter } from './playwright.js';
+export { default as OkproofPlaywrightReporter } from './playwright.js';
 export { publishToGitHub, renderComment, pullRequestNumber, COMMENT_MARKER, type GitHubEnv, type PublishResult } from './github.js';
 export * from './driver/index.js';
 export * from './verify/index.js';

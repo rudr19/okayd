@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
-function okayd(args: string[]) {
+function okproof(args: string[]) {
   const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.GITHUB_ACTIONS;
   delete env.GITHUB_TOKEN;
@@ -21,17 +21,17 @@ function okayd(args: string[]) {
 }
 
 const PROOF = '## #7 Demo\n- [ ] First thing works\n- [ ] Second thing works\n';
-const JUNIT = '<testsuite><testcase name="a [okayd:7.1]"/><testcase name="b [okayd:7.2]"/></testsuite>';
+const JUNIT = '<testsuite><testcase name="a [okproof:7.1]"/><testcase name="b [okproof:7.2]"/></testsuite>';
 
-/** A project whose proof file is fully proven by a real `okayd ingest`. */
+/** A project whose proof file is fully proven by a real `okproof ingest`. */
 async function proven() {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-gate-'));
-  const dir = join(root, '.okayd');
+  const root = await mkdtemp(join(tmpdir(), 'okproof-gate-'));
+  const dir = join(root, '.okproof');
   await mkdir(dir);
   await writeFile(join(dir, '7.md'), PROOF);
   const xml = join(root, 'junit.xml');
   await writeFile(xml, JUNIT);
-  const ing = okayd(['ingest', xml, dir]);
+  const ing = okproof(['ingest', xml, dir]);
   assert.match(ing.out, /2\/2 criteria met, proven/);
   return { root, dir };
 }
@@ -39,7 +39,7 @@ async function proven() {
 test('baseline: a proven ledger that matches its proof file passes the gate', async () => {
   const { root, dir } = await proven();
   try {
-    assert.equal(okayd(['gate', dir]).status, 0);
+    assert.equal(okproof(['gate', dir]).status, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -49,7 +49,7 @@ test('4a: deleting a criterion from the proof file fails the gate as stale', asy
   const { root, dir } = await proven();
   try {
     await writeFile(join(dir, '7.md'), '## #7 Demo\n- [ ] First thing works\n');
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /stale/i);
     assert.match(r.out, /re-run/i);
@@ -62,12 +62,12 @@ test('4a: adding or editing a criterion after the ledger was written fails as st
   const { root, dir } = await proven();
   try {
     await writeFile(join(dir, '7.md'), PROOF + '- [ ] Third thing works\n');
-    const added = okayd(['gate', dir]);
+    const added = okproof(['gate', dir]);
     assert.equal(added.status, 1, added.out);
     assert.match(added.out, /stale/i);
 
     await writeFile(join(dir, '7.md'), '## #7 Demo\n- [ ] First thing works\n- [ ] Second thing works differently\n');
-    const edited = okayd(['gate', dir]);
+    const edited = okproof(['gate', dir]);
     assert.equal(edited.status, 1, edited.out);
     assert.match(edited.out, /stale/i);
   } finally {
@@ -75,28 +75,28 @@ test('4a: adding or editing a criterion after the ledger was written fails as st
   }
 });
 
-test('4b: no .okayd directory fails with a clear message, unless --allow-empty', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-gate-'));
+test('4b: no .okproof directory fails with a clear message, unless --allow-empty', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'okproof-gate-'));
   try {
-    const missing = join(root, '.okayd');
-    const r = okayd(['gate', missing]);
+    const missing = join(root, '.okproof');
+    const r = okproof(['gate', missing]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /no proof files|nothing to prove/i);
-    assert.equal(okayd(['gate', missing, '--allow-empty']).status, 0);
+    assert.equal(okproof(['gate', missing, '--allow-empty']).status, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('4b: an empty .okayd directory fails, unless --allow-empty', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-gate-'));
+test('4b: an empty .okproof directory fails, unless --allow-empty', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'okproof-gate-'));
   try {
-    const dir = join(root, '.okayd');
+    const dir = join(root, '.okproof');
     await mkdir(dir);
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /no proof files|nothing to prove/i);
-    assert.equal(okayd(['gate', dir, '--allow-empty']).status, 0);
+    assert.equal(okproof(['gate', dir, '--allow-empty']).status, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -106,7 +106,7 @@ test('4c: a proof file with no ledger fails even when another proof file has one
   const { root, dir } = await proven();
   try {
     await writeFile(join(dir, '8.md'), '## #8 Other\n- [ ] Never tested\n');
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /#8/);
     assert.match(r.out, /no ledger/i);
@@ -116,12 +116,12 @@ test('4c: a proof file with no ledger fails even when another proof file has one
 });
 
 test('4c: a proof file with no ledger at all fails', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-gate-'));
+  const root = await mkdtemp(join(tmpdir(), 'okproof-gate-'));
   try {
-    const dir = join(root, '.okayd');
+    const dir = join(root, '.okproof');
     await mkdir(dir);
     await writeFile(join(dir, '7.md'), PROOF);
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /no ledger/i);
   } finally {
@@ -137,7 +137,7 @@ test('4d: the verdict comes from ledger entries, never the proven field alone', 
     ledger.entries[1].verdict = 'untested';
     ledger.proven = true; // forged or out of date
     await writeFile(path, JSON.stringify(ledger));
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /7\.2/);
   } finally {
@@ -151,7 +151,7 @@ test('4d: a ledger whose proof file was deleted is an orphan and fails', async (
     await writeFile(join(dir, '8.md'), '## #8 Other\n- [ ] Other thing\n');
     await writeFile(join(dir, 'ledger-8.json'), JSON.stringify({ issue: '8', title: 'Other', entries: [{ id: '8.1', text: 'Other thing', verdict: 'met', tests: [] }], proven: true }));
     await rm(join(dir, '8.md'));
-    const r = okayd(['gate', dir]);
+    const r = okproof(['gate', dir]);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /#8/);
     assert.match(r.out, /no proof file/i);

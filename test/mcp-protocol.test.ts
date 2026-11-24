@@ -16,7 +16,7 @@ test('initialize echoes a supported protocol version', async () => {
   assert.equal(out[0].id, 1);
   assert.equal(out[0].result.protocolVersion, '2025-03-26');
   assert.deepEqual(out[0].result.capabilities, { tools: {} });
-  assert.deepEqual(out[0].result.serverInfo, { name: 'okayd', version: '9.9.9' });
+  assert.deepEqual(out[0].result.serverInfo, { name: 'okproof', version: '9.9.9' });
 });
 
 test('initialize falls back to 2025-06-18 for unknown versions', async () => {
@@ -36,14 +36,14 @@ test('tools/list exposes the four tools with schemas', async () => {
   const { out, send } = harness();
   await send({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
   const tools = out[0].result.tools;
-  assert.deepEqual(tools.map((t: any) => t.name).sort(), ['okayd_add_criterion', 'okayd_criteria', 'okayd_ingest_junit', 'okayd_lint', 'okayd_status']);
+  assert.deepEqual(tools.map((t: any) => t.name).sort(), ['okproof_add_criterion', 'okproof_criteria', 'okproof_ingest_junit', 'okproof_lint', 'okproof_status']);
   for (const t of tools) {
     assert.equal(t.inputSchema.type, 'object');
     assert.ok(t.description.length > 20);
   }
-  const add = tools.find((t: any) => t.name === 'okayd_add_criterion');
+  const add = tools.find((t: any) => t.name === 'okproof_add_criterion');
   assert.deepEqual(add.inputSchema.required, ['issue', 'text']);
-  assert.deepEqual(tools.find((t: any) => t.name === 'okayd_ingest_junit').inputSchema.required, ['file']);
+  assert.deepEqual(tools.find((t: any) => t.name === 'okproof_ingest_junit').inputSchema.required, ['file']);
 });
 
 test('unknown method is -32601', async () => {
@@ -72,13 +72,13 @@ test('tools/call with bad params is -32602; unknown tool too', async () => {
   const { out, send } = harness();
   await send({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: {} });
   await send({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'nope' } });
-  await send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'okayd_status', arguments: [] } });
+  await send({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'okproof_status', arguments: [] } });
   assert.deepEqual(out.map((o) => o.error.code), [-32602, -32602, -32602]);
 });
 
 test('a tool failure is a result with isError, not a protocol error', async () => {
   const { out, send } = harness();
-  await send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'okayd_status', arguments: { issue: '../../etc' } } });
+  await send({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'okproof_status', arguments: { issue: '../../etc' } } });
   assert.equal(out[0].error, undefined);
   assert.equal(out[0].result.isError, true);
   assert.equal(out[0].result.content[0].type, 'text');

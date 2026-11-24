@@ -40,7 +40,7 @@ export function createProtocol(options: ProtocolOptions): Protocol {
         return reply(id, {
           protocolVersion: typeof asked === 'string' && SUPPORTED.includes(asked) ? asked : LATEST,
           capabilities: { tools: {} },
-          serverInfo: { name: 'okayd', version },
+          serverInfo: { name: 'okproof', version },
         });
       }
       case 'ping':

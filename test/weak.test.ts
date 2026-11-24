@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildLedger, finalize, parseCTRF, parseJUnit, parseProof, renderComment, renderLedgerMarkdown, OkaydPlaywrightReporter } from '../src/index.js';
+import { buildLedger, finalize, parseCTRF, parseJUnit, parseProof, renderComment, renderLedgerMarkdown, OkproofPlaywrightReporter } from '../src/index.js';
 import { countAssertions } from '../src/playwright.js';
 import { applyVerifyFile } from '../src/verify/ledger.js';
 import { runTool, tools } from '../src/mcp/tools.js';
@@ -12,42 +12,42 @@ import type { VerifyFile } from '../src/verify/types.js';
 const PROOF = parseProof('## #7 Weak\n- [ ] First\n- [ ] Second\n- [ ] Third\n');
 
 test('ledger: a passing test with zero assertions is unproven, not met', () => {
-  const l = buildLedger(PROOF, [{ title: 'a [okayd:7.1]', status: 'passed', assertions: 0 }]);
+  const l = buildLedger(PROOF, [{ title: 'a [okproof:7.1]', status: 'passed', assertions: 0 }]);
   assert.equal(l.entries[0].verdict, 'unproven');
-  assert.deepEqual(l.entries[0].weak, ['a [okayd:7.1]']);
+  assert.deepEqual(l.entries[0].weak, ['a [okproof:7.1]']);
   assert.equal(l.proven, false);
   const md = renderLedgerMarkdown(l);
   assert.match(md, /UNPROVEN \(no assertions\)/);
-  assert.match(md, /add a real assertion: a \[okayd:7\.1\]/);
+  assert.match(md, /add a real assertion: a \[okproof:7\.1\]/);
 });
 
 test('ledger: precedence is failed, then unproven, then met', () => {
   const l = buildLedger(PROOF, [
-    { title: 'weak [okayd:7.1]', status: 'passed', assertions: 0 },
-    { title: 'strong [okayd:7.1]', status: 'passed', assertions: 2 },
-    { title: 'weak [okayd:7.2]', status: 'passed', assertions: 0 },
-    { title: 'bad [okayd:7.2]', status: 'failed', assertions: 0 },
-    { title: 'weak1 [okayd:7.3]', status: 'passed', assertions: 0 },
-    { title: 'weak2 [okayd:7.3]', status: 'passed', assertions: 0 },
+    { title: 'weak [okproof:7.1]', status: 'passed', assertions: 0 },
+    { title: 'strong [okproof:7.1]', status: 'passed', assertions: 2 },
+    { title: 'weak [okproof:7.2]', status: 'passed', assertions: 0 },
+    { title: 'bad [okproof:7.2]', status: 'failed', assertions: 0 },
+    { title: 'weak1 [okproof:7.3]', status: 'passed', assertions: 0 },
+    { title: 'weak2 [okproof:7.3]', status: 'passed', assertions: 0 },
   ]);
   assert.deepEqual(l.entries.map((e) => e.verdict), ['met', 'failed', 'unproven']);
   const flaky = buildLedger(PROOF, [
-    { title: 'x [okayd:7.1]', status: 'passed', assertions: 0 },
-    { title: 'y [okayd:7.1]', status: 'flaky', assertions: 5 },
+    { title: 'x [okproof:7.1]', status: 'passed', assertions: 0 },
+    { title: 'y [okproof:7.1]', status: 'flaky', assertions: 5 },
   ]);
   assert.equal(flaky.entries[0].verdict, 'failed');
 });
 
 test('ledger: unknown counts are not weak unless strict', () => {
-  const outcomes = [{ title: 'a [okayd:7.1]', status: 'passed' }];
+  const outcomes = [{ title: 'a [okproof:7.1]', status: 'passed' }];
   assert.equal(buildLedger(PROOF, outcomes).entries[0].verdict, 'met');
   assert.equal(buildLedger(PROOF, outcomes, { strictAssertions: true }).entries[0].verdict, 'unproven');
-  const known = [{ title: 'a [okayd:7.1]', status: 'passed', assertions: 1 }];
+  const known = [{ title: 'a [okproof:7.1]', status: 'passed', assertions: 1 }];
   assert.equal(buildLedger(PROOF, known, { strictAssertions: true }).entries[0].verdict, 'met');
 });
 
 test('ledger: a confirmed verifier refutation still wins as failed', () => {
-  const l = buildLedger(PROOF, [{ title: 'a [okayd:7.1]', status: 'passed', assertions: 0 }]);
+  const l = buildLedger(PROOF, [{ title: 'a [okproof:7.1]', status: 'passed', assertions: 0 }]);
   const file: VerifyFile = {
     issue: '7', title: 'Weak', baseUrl: 'http://x',
     results: [{
@@ -62,17 +62,17 @@ test('ledger: a confirmed verifier refutation still wins as failed', () => {
 });
 
 test('finalize: strictAssertions option and env both apply; lines mention unproven', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-weak-'));
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-weak-'));
   await writeFile(join(dir, '7.md'), '## #7 Weak\n- [ ] First\n');
-  const outcomes = [{ title: 'a [okayd:7.1]', status: 'passed' }];
+  const outcomes = [{ title: 'a [okproof:7.1]', status: 'passed' }];
   assert.match((await finalize(outcomes, { dir, github: false })).lines[0], /1\/1 criteria met, proven/);
   const strict = await finalize(outcomes, { dir, github: false, strictAssertions: true });
-  assert.equal(strict.lines[0], 'okayd #7: 0/1 criteria met, 1 unproven (no assertions), not proven');
-  process.env.OKAYD_STRICT_ASSERTIONS = '1';
+  assert.equal(strict.lines[0], 'okproof #7: 0/1 criteria met, 1 unproven (no assertions), not proven');
+  process.env.OKPROOF_STRICT_ASSERTIONS = '1';
   try {
     assert.equal((await finalize(outcomes, { dir, github: false })).ledgers[0].entries[0].verdict, 'unproven');
   } finally {
-    delete process.env.OKAYD_STRICT_ASSERTIONS;
+    delete process.env.OKPROOF_STRICT_ASSERTIONS;
   }
   assert.match(renderComment(strict.ledgers), /Silence is not proof: #7 7\.1/);
   await rm(dir, { recursive: true, force: true });
@@ -95,10 +95,10 @@ test('Playwright: nested expect steps are counted, including soft assertions', (
   assert.equal(countAssertions(undefined), undefined);
 });
 
-async function runReporter(steps: unknown, tagged = 'a [okayd:7.1]') {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-pw-'));
+async function runReporter(steps: unknown, tagged = 'a [okproof:7.1]') {
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-pw-'));
   await writeFile(join(dir, '7.md'), '## #7 Weak\n- [ ] First\n');
-  const r = new OkaydPlaywrightReporter({ dir, github: false });
+  const r = new OkproofPlaywrightReporter({ dir, github: false });
   const result: Record<string, unknown> = { status: 'passed', retry: 0, duration: 10, attachments: [] };
   if (steps !== undefined) result.steps = steps;
   r.onTestEnd(pwTest(tagged), result as never);
@@ -154,18 +154,18 @@ test('CTRF: reads extra.assertions only when it is a number', () => {
 
 // --- MCP ----------------------------------------------------------------
 
-test('okayd_status shows unproven and names the weak test', async () => {
-  const cwd = await mkdtemp(join(tmpdir(), 'okayd-mcp-weak-'));
-  await mkdir(join(cwd, '.okayd'));
-  await writeFile(join(cwd, '.okayd', '7.md'), '## #7 Weak\n- [ ] First\n- [ ] Second\n');
-  const xml = '<testcase name="first works [okayd:7.1]" assertions="0"/><testcase name="second works [okayd:7.2]" assertions="2"/>';
-  await finalize(parseJUnit(xml), { dir: join(cwd, '.okayd'), github: false });
-  const tool = tools.find((t) => t.name === 'okayd_status')!;
+test('okproof_status shows unproven and names the weak test', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'okproof-mcp-weak-'));
+  await mkdir(join(cwd, '.okproof'));
+  await writeFile(join(cwd, '.okproof', '7.md'), '## #7 Weak\n- [ ] First\n- [ ] Second\n');
+  const xml = '<testcase name="first works [okproof:7.1]" assertions="0"/><testcase name="second works [okproof:7.2]" assertions="2"/>';
+  await finalize(parseJUnit(xml), { dir: join(cwd, '.okproof'), github: false });
+  const tool = tools.find((t) => t.name === 'okproof_status')!;
   const r = await runTool(tool, {}, { cwd });
   const text = r.content[0].text;
   assert.equal(text.split('\n')[0], 'Not done: 1 of 2 criteria proven.');
   assert.match(text, /UNPROVEN {2}7\.1/);
-  assert.match(text, /- 7\.1 \(unproven\).*add a real assertion to first works \[okayd:7\.1\]/);
+  assert.match(text, /- 7\.1 \(unproven\).*add a real assertion to first works \[okproof:7\.1\]/);
   assert.match(text, /MET {2}7\.2/);
   await rm(cwd, { recursive: true, force: true });
 });

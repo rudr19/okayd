@@ -8,7 +8,7 @@ import { publishToGitHub } from './github.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
 
 export interface FinalizeOptions {
-  /** Folder holding proof files. Default ".okayd". */
+  /** Folder holding proof files. Default ".okproof". */
   dir?: string;
   /** Only check this issue's proof file. Default: every proof file in dir. */
   issue?: string;
@@ -16,7 +16,7 @@ export interface FinalizeOptions {
   github?: boolean;
   /**
    * Treat a test whose assertion count is unknown as weak (unproven).
-   * Default: true only when OKAYD_STRICT_ASSERTIONS=1.
+   * Default: true only when OKPROOF_STRICT_ASSERTIONS=1.
    */
   strictAssertions?: boolean;
 }
@@ -28,11 +28,11 @@ export interface FinalizeResult {
 }
 
 export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions = {}): Promise<FinalizeResult> {
-  const dir = options.dir ?? '.okayd';
+  const dir = options.dir ?? '.okproof';
   const files = (await readdir(dir)).filter(
     (f) => f.endsWith('.md') && !f.startsWith('ledger-') && (!options.issue || f === `${options.issue}.md`),
   );
-  const strict = options.strictAssertions ?? process.env.OKAYD_STRICT_ASSERTIONS === '1';
+  const strict = options.strictAssertions ?? process.env.OKPROOF_STRICT_ASSERTIONS === '1';
   const ledgers: Ledger[] = [];
   const lines: string[] = [];
   for (const f of files) {
@@ -46,12 +46,12 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
     const met = ledger.entries.filter((e) => e.verdict === 'met').length;
     const unproven = ledger.entries.filter((e) => e.verdict === 'unproven').length;
     const weakNote = unproven > 0 ? `, ${unproven} unproven (no assertions)` : '';
-    lines.push(`okayd #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
+    lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
   }
   if (options.github !== false && ledgers.length > 0) {
     const published = await publishToGitHub(ledgers);
-    if (published.comment !== 'skipped') lines.push(`okayd: pull request comment ${published.comment}`);
-    else if (published.reason !== 'not running in GitHub Actions') lines.push(`okayd: no PR comment (${published.reason})`);
+    if (published.comment !== 'skipped') lines.push(`okproof: pull request comment ${published.comment}`);
+    else if (published.reason !== 'not running in GitHub Actions') lines.push(`okproof: no PR comment (${published.reason})`);
   }
   return { ledgers, lines };
 }

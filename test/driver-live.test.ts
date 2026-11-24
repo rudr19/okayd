@@ -6,7 +6,7 @@ const chrome = findChrome();
 const hasWebSocket = typeof (globalThis as { WebSocket?: unknown }).WebSocket === 'function';
 const skip = !chrome ? 'no Chrome found' : !hasWebSocket ? 'global WebSocket missing (needs Node 22)' : false;
 
-const html = `<!doctype html><html><head><title>Okayd fixture</title></head><body>
+const html = `<!doctype html><html><head><title>okproof fixture</title></head><body>
 <h1>Fixture page</h1>
 <a href="#x">Jump link</a>
 <label>Name <input id="name" type="text"></label>
@@ -24,7 +24,7 @@ test('live driver: snapshot, type, click, press, problems, screenshot, close', {
   try {
     const page = await browser.newPage();
     await page.goto('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    assert.equal(await page.title(), 'Okayd fixture');
+    assert.equal(await page.title(), 'okproof fixture');
 
     const snap = await page.snapshot();
     assert.match(snap.text, /heading "Fixture page" \[level=1\]/);
@@ -39,9 +39,9 @@ test('live driver: snapshot, type, click, press, problems, screenshot, close', {
     const enterRef = refOf(/textbox "Enter field" \[ref=(e\d+)\]/);
     assert.ok(snap.refs.size >= 4);
 
-    await page.type(nameRef, 'Okayd');
+    await page.type(nameRef, 'okproof');
     await page.click(greetRef);
-    assert.equal(await page.evaluate<string>("document.getElementById('out').textContent"), 'Hello Okayd');
+    assert.equal(await page.evaluate<string>("document.getElementById('out').textContent"), 'Hello okproof');
 
     await page.type(enterRef, 'x');
     await page.press('Enter');

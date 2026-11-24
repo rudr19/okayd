@@ -1,4 +1,4 @@
-// Audit gap 3: `okayd check --issue-body <file>` compares the proof file's
+// Audit gap 3: `okproof check --issue-body <file>` compares the proof file's
 // criteria with the checkboxes in an issue body. No network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,9 +13,9 @@ const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const PROOF = '## #7 Demo\n- [ ] First thing works\n- [ ] Second thing works\n';
 
 async function run(body: string, extra: string[] = [], proofs: Record<string, string> = { '7.md': PROOF }) {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-drift-'));
+  const root = await mkdtemp(join(tmpdir(), 'okproof-drift-'));
   try {
-    const dir = join(root, '.okayd');
+    const dir = join(root, '.okproof');
     await mkdir(dir);
     for (const [name, text] of Object.entries(proofs)) await writeFile(join(dir, name), text);
     const file = join(root, 'issue.md');

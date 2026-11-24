@@ -1,6 +1,6 @@
 # Contributor License Agreement (draft)
 
-By submitting a contribution to Okayd you agree that:
+By submitting a contribution to okproof you agree that:
 
 1. You wrote the contribution, or have the right to submit it.
 2. You grant the project owner (Rudra Kumar Pandey) a perpetual, worldwide, royalty-free,
@@ -9,4 +9,4 @@ By submitting a contribution to Okayd you agree that:
 3. You keep the copyright in your contribution.
 
 Draft only. Have a lawyer review it before accepting outside contributions.
-Sign by commenting "I agree to the Okayd CLA" on your first pull request.
+Sign by commenting "I agree to the okproof CLA" on your first pull request.

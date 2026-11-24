@@ -1,4 +1,4 @@
-// The Okayd tools an agent can call over MCP. Handlers take a `cwd`
+// The okproof tools an agent can call over MCP. Handlers take a `cwd`
 // so tests (and embedders) never depend on process.cwd().
 import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -62,7 +62,7 @@ function issueArg(args: Record<string, unknown>, required: boolean): string | un
 }
 
 function dirArg(args: Record<string, unknown>, ctx: ToolContext): { abs: string; shown: string } {
-  const shown = optString(args, 'dir') ?? '.okayd';
+  const shown = optString(args, 'dir') ?? '.okproof';
   return { abs: resolveInside(ctx.cwd, shown, 'dir'), shown };
 }
 
@@ -80,13 +80,13 @@ async function loadProofs(dirAbs: string, shown: string, issue: string | undefin
   } catch {
     throw new ToolFailure(
       `No proof folder at "${shown}". Create ${shown}/<issue>.md with a "## #<issue> <title>" heading and "- [ ] criterion" lines, ` +
-        `or call okayd_add_criterion to create one.`,
+        `or call okproof_add_criterion to create one.`,
     );
   }
   let md = names.filter((n) => n.endsWith('.md') && !n.startsWith('ledger-')).sort();
   if (issue) {
     md = md.filter((n) => n === `${issue}.md`);
-    if (md.length === 0) throw new ToolFailure(`No proof file ${shown}/${issue}.md. Call okayd_criteria to list what exists, or okayd_add_criterion to create it.`);
+    if (md.length === 0) throw new ToolFailure(`No proof file ${shown}/${issue}.md. Call okproof_criteria to list what exists, or okproof_add_criterion to create it.`);
   }
   const out: LoadedProof[] = [];
   for (const file of md) {
@@ -108,15 +108,15 @@ async function loadProofs(dirAbs: string, shown: string, issue: string | undefin
   return out;
 }
 
-const okayd_criteria: ToolDefinition = {
-  name: 'okayd_criteria',
+const okproof_criteria: ToolDefinition = {
+  name: 'okproof_criteria',
   description:
-    'List the acceptance criteria in the repo\'s proof files (.okayd/<issue>.md) with the exact tag to put in a test title ' +
-    'so the test claims that criterion, e.g. "upgrade works [okayd:142.1]". Call this first to learn what you must prove.',
+    'List the acceptance criteria in the repo\'s proof files (.okproof/<issue>.md) with the exact tag to put in a test title ' +
+    'so the test claims that criterion, e.g. "upgrade works [okproof:142.1]". Call this first to learn what you must prove.',
   inputSchema: {
     type: 'object',
     properties: {
-      dir: { type: 'string', description: 'Folder holding proof files, relative to the working directory. Default ".okayd".' },
+      dir: { type: 'string', description: 'Folder holding proof files, relative to the working directory. Default ".okproof".' },
       issue: { type: 'string', description: 'Only list this issue (matches /^[\\w-]+$/), e.g. "142". Default: every proof file.' },
     },
     additionalProperties: false,
@@ -125,7 +125,7 @@ const okayd_criteria: ToolDefinition = {
     const { abs, shown } = dirArg(args, ctx);
     const issue = issueArg(args, false);
     const proofs = await loadProofs(abs, shown, issue);
-    if (proofs.length === 0) return `No proof files in ${shown}. Add one with okayd_add_criterion.`;
+    if (proofs.length === 0) return `No proof files in ${shown}. Add one with okproof_add_criterion.`;
     const lines: string[] = [];
     for (const p of proofs) {
       if (!p.proof) {
@@ -133,7 +133,7 @@ const okayd_criteria: ToolDefinition = {
         continue;
       }
       lines.push(`#${p.proof.issue} ${p.proof.title} (${shown}/${p.file})`);
-      for (const c of p.proof.criteria) lines.push(`  [okayd:${c.id}] ${c.text}`);
+      for (const c of p.proof.criteria) lines.push(`  [okproof:${c.id}] ${c.text}`);
       lines.push('');
     }
     lines.push('Put the bracketed tag in the title of each test that proves that criterion. A criterion with no passing tagged test is not proven.');
@@ -170,8 +170,8 @@ async function readLedger(dirAbs: string, issue: string, warnings: string[]): Pr
   }
 }
 
-const okayd_status: ToolDefinition = {
-  name: 'okayd_status',
+const okproof_status: ToolDefinition = {
+  name: 'okproof_status',
   description:
     'The definition of done. Call this BEFORE telling the user a task is finished. Reports, per issue, which acceptance criteria are ' +
     'proven (met), failed or untested, based on the ledger the test run wrote. The first line is the verdict ("Done" or "Not done"); ' +
@@ -179,7 +179,7 @@ const okayd_status: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
-      dir: { type: 'string', description: 'Folder holding proof files and ledgers, relative to the working directory. Default ".okayd".' },
+      dir: { type: 'string', description: 'Folder holding proof files and ledgers, relative to the working directory. Default ".okproof".' },
       issue: { type: 'string', description: 'Only report this issue (matches /^[\\w-]+$/). Default: every proof file.' },
     },
     additionalProperties: false,
@@ -188,7 +188,7 @@ const okayd_status: ToolDefinition = {
     const { abs, shown } = dirArg(args, ctx);
     const issue = issueArg(args, false);
     const proofs = await loadProofs(abs, shown, issue);
-    if (proofs.length === 0) return `Not done: no proof files in ${shown}, so nothing is proven. Add criteria with okayd_add_criterion.`;
+    if (proofs.length === 0) return `Not done: no proof files in ${shown}, so nothing is proven. Add criteria with okproof_add_criterion.`;
 
     const warnings: string[] = [];
     const body: string[] = [];
@@ -206,14 +206,14 @@ const okayd_status: ToolDefinition = {
       const { ledger, mtimeMs } = await readLedger(abs, p.proof.issue, warnings);
       if (ledger && mtimeMs !== undefined && p.mtimeMs > mtimeMs) {
         warnings.push(
-          `#${p.proof.issue}: ${shown}/${p.file} is newer than its ledger, so the ledger may be out of date. Re-run the tests with the Okayd reporter or \`okayd ingest\`.`,
+          `#${p.proof.issue}: ${shown}/${p.file} is newer than its ledger, so the ledger may be out of date. Re-run the tests with the okproof reporter or \`okproof ingest\`.`,
         );
       }
       const rows = mergeLedger(p.proof, ledger);
       const issueMet = rows.filter((r) => r.entry.verdict === 'met').length;
       total += rows.length;
       met += issueMet;
-      body.push(`#${p.proof.issue} ${p.proof.title}: ${issueMet} of ${rows.length} proven${ledger ? '' : ' (untested: no ledger yet — run the tests with the Okayd reporter or `okayd ingest`)'}`);
+      body.push(`#${p.proof.issue} ${p.proof.title}: ${issueMet} of ${rows.length} proven${ledger ? '' : ' (untested: no ledger yet — run the tests with the okproof reporter or `okproof ingest`)'}`);
       for (const { entry: e } of rows) {
         const evidence = e.tests.map((t) => (t.evidence ? `${t.status}, ${t.evidence}` : t.status)).join('; ');
         body.push(`  ${e.verdict.toUpperCase()}  ${e.id} ${e.text}${evidence ? ` (${evidence})` : ''}`);
@@ -225,7 +225,7 @@ const okayd_status: ToolDefinition = {
               : e.verdict === 'unproven'
                 ? `add a real assertion to ${weakNames}: it passed but asserted nothing, and silence is not proof`
                 : 'no passing test claims it; write one and tag its title';
-          next.push(`${e.id} (${e.verdict}): ${e.text} — ${why}. Tag: [okayd:${e.id}]`);
+          next.push(`${e.id} (${e.verdict}): ${e.text} — ${why}. Tag: [okproof:${e.id}]`);
         }
       }
       body.push('');
@@ -242,17 +242,17 @@ const okayd_status: ToolDefinition = {
   },
 };
 
-const okayd_ingest_junit: ToolDefinition = {
-  name: 'okayd_ingest_junit',
+const okproof_ingest_junit: ToolDefinition = {
+  name: 'okproof_ingest_junit',
   description:
-    'Turn a JUnit XML test report (from Playwright, Jest, Vitest, pytest, ...) into Okayd ledgers by matching test names that contain ' +
-    '[okayd:<issue>.<n>] tags. Run your tests with a JUnit reporter first, then call this, then call okayd_status. ' +
+    'Turn a JUnit XML test report (from Playwright, Jest, Vitest, pytest, ...) into okproof ledgers by matching test names that contain ' +
+    '[okproof:<issue>.<n>] tags. Run your tests with a JUnit reporter first, then call this, then call okproof_status. ' +
     'Never posts to GitHub. The file must be inside the working directory.',
   inputSchema: {
     type: 'object',
     properties: {
       file: { type: 'string', description: 'Path to the JUnit XML file, relative to the working directory.' },
-      dir: { type: 'string', description: 'Folder holding proof files; ledgers are written here. Default ".okayd".' },
+      dir: { type: 'string', description: 'Folder holding proof files; ledgers are written here. Default ".okproof".' },
     },
     required: ['file'],
     additionalProperties: false,
@@ -272,14 +272,14 @@ const okayd_ingest_junit: ToolDefinition = {
     await loadProofs(abs, shown, undefined); // friendly error when the folder is missing
     const { ledgers, lines } = await finalize(outcomes, { dir: abs, github: false });
     if (ledgers.length === 0) throw new ToolFailure(`No proof files in ${shown} to build ledgers from.`);
-    return [...lines, '', 'Call okayd_status for per-criterion detail.'].join('\n');
+    return [...lines, '', 'Call okproof_status for per-criterion detail.'].join('\n');
   },
 };
 
-const okayd_add_criterion: ToolDefinition = {
-  name: 'okayd_add_criterion',
+const okproof_add_criterion: ToolDefinition = {
+  name: 'okproof_add_criterion',
   description:
-    'Append one acceptance criterion ("- [ ] text") to .okayd/<issue>.md, creating the file if needed (then "title" is required). ' +
+    'Append one acceptance criterion ("- [ ] text") to .okproof/<issue>.md, creating the file if needed (then "title" is required). ' +
     'Returns the new criterion id and the tag to put in test titles. Agents may only ADD criteria: there is deliberately no tool to ' +
     'remove or edit them, so a proof can never be weakened to make a task look done. If a criterion is wrong, tell the user.',
   inputSchema: {
@@ -288,7 +288,7 @@ const okayd_add_criterion: ToolDefinition = {
       issue: { type: 'string', description: 'Issue id, matches /^[\\w-]+$/, e.g. "142".' },
       text: { type: 'string', description: 'The criterion, one line, phrased as observable behaviour a test can check.' },
       title: { type: 'string', description: 'Issue title for the "## #<issue> <title>" heading. Required only when the proof file does not exist yet.' },
-      dir: { type: 'string', description: 'Folder holding proof files, relative to the working directory. Default ".okayd".' },
+      dir: { type: 'string', description: 'Folder holding proof files, relative to the working directory. Default ".okproof".' },
     },
     required: ['issue', 'text'],
     additionalProperties: false,
@@ -321,19 +321,19 @@ const okayd_add_criterion: ToolDefinition = {
       await writeFile(path, `${existing}${sep}- [ ] ${text}\n`);
     }
     const id = `${issue}.${index}`;
-    return `Added criterion ${id} to ${shown}/${issue}.md. Tag its test: [okayd:${id}]`;
+    return `Added criterion ${id} to ${shown}/${issue}.md. Tag its test: [okproof:${id}]`;
   },
 };
 
-const okayd_lint: ToolDefinition = {
-  name: 'okayd_lint',
+const okproof_lint: ToolDefinition = {
+  name: 'okproof_lint',
   description:
-    'Static check for weak tests: finds tests tagged [okayd:<id>] whose body has no assertion, tags that name a criterion no proof file lists, ' +
+    'Static check for weak tests: finds tests tagged [okproof:<id>] whose body has no assertion, tags that name a criterion no proof file lists, ' +
     'and criteria no tagged test claims. A tag is a claim; an assertion is evidence. Heuristic, never runs your tests. Paths must stay inside the working directory.',
   inputSchema: {
     type: 'object',
     properties: {
-      dir: { type: 'string', description: 'Project root to scan, relative to the working directory. Default ".". Proof files are read from <dir>/.okayd.' },
+      dir: { type: 'string', description: 'Project root to scan, relative to the working directory. Default ".". Proof files are read from <dir>/.okproof.' },
       tests: { type: 'string', description: 'Limit the scan to this directory, file or simple glob (relative to dir), e.g. "e2e" or "e2e/**/*.spec.ts".' },
     },
     additionalProperties: false,
@@ -352,7 +352,7 @@ const okayd_lint: ToolDefinition = {
   },
 };
 
-export const tools: ToolDefinition[] = [okayd_criteria, okayd_status, okayd_ingest_junit, okayd_add_criterion, okayd_lint];
+export const tools: ToolDefinition[] = [okproof_criteria, okproof_status, okproof_ingest_junit, okproof_add_criterion, okproof_lint];
 
 /** Run a tool; handler failures become isError results, never throw. */
 export async function runTool(tool: ToolDefinition, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {

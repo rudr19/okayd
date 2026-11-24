@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria } from '../src/sync.js';
 import { parseProof } from '../src/proof.js';
 
-const tmp = (): Promise<string> => mkdtemp(join(tmpdir(), 'okayd-sync-'));
+const tmp = (): Promise<string> => mkdtemp(join(tmpdir(), 'okproof-sync-'));
 
 test('proofFromIssue renders one unchecked line per checkbox variant', () => {
   const out = proofFromIssue({
@@ -47,11 +47,11 @@ test('proofFromIssue rejects bad issue numbers and bodies with no criteria', () 
 
 test('syncProofFile creates the file when missing', async () => {
   const cwd = await tmp();
-  const r = await syncProofFile({ cwd, dir: '.okayd', issue: 3, title: 'T', body: '- [ ] a\n- [ ] b' });
+  const r = await syncProofFile({ cwd, dir: '.okproof', issue: 3, title: 'T', body: '- [ ] a\n- [ ] b' });
   assert.equal(r.created, true);
   assert.equal(r.changed, true);
   assert.deepEqual(r.added.map((c) => c.id), ['3.1', '3.2']);
-  assert.equal(await readFile(join(cwd, '.okayd', '3.md'), 'utf8'), '## #3 T\n- [ ] a\n- [ ] b\n');
+  assert.equal(await readFile(join(cwd, '.okproof', '3.md'), 'utf8'), '## #3 T\n- [ ] a\n- [ ] b\n');
 });
 
 test('syncProofFile keeps order and ids, appends new, drops removed, and is a no-op when in sync', async () => {

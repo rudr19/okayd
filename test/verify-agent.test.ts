@@ -15,7 +15,7 @@ import { refOf, skip, startApp } from './verify-fixture.js';
 const PROOF = '## #7 Notes\n- [ ] A saved note is still there after reloading the page\n';
 
 async function workdir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-verify-'));
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-verify-'));
   await writeFile(join(dir, '7.md'), PROOF);
   return dir;
 }
@@ -68,7 +68,7 @@ test('a real bug is refuted, confirmed by replay, saved as a repro, and fails th
     assert.ok(existsSync(r!.screenshots[0]!));
 
     // A claiming test that passed does not rescue the criterion.
-    const { ledgers } = await finalize([{ title: 'persists [okayd:7.1]', status: 'passed' }], { dir, github: false });
+    const { ledgers } = await finalize([{ title: 'persists [okproof:7.1]', status: 'passed' }], { dir, github: false });
     const entry = ledgers[0]!.entries[0]!;
     assert.equal(entry.verdict, 'failed');
     assert.equal(ledgers[0]!.proven, false);
@@ -166,7 +166,7 @@ test('refusal, max_tokens, offsite goto and step limit end cleanly', { skip, tim
 test('finalize leaves the ledger alone when there is no verifier file, and ignores non-refuted results', async () => {
   const dir = await workdir();
   try {
-    let { ledgers } = await finalize([{ title: 'a [okayd:7.1]', status: 'passed' }], { dir, github: false });
+    let { ledgers } = await finalize([{ title: 'a [okproof:7.1]', status: 'passed' }], { dir, github: false });
     assert.equal(ledgers[0]!.proven, true);
     const file: VerifyFile = {
       issue: '7',
@@ -175,7 +175,7 @@ test('finalize leaves the ledger alone when there is no verifier file, and ignor
       results: [{ criterionId: '7.1', criterion: 'x', verdict: 'held', outcome: 'concluded', findings: [], actions: [], screenshots: [], steps: 1, usage: { input: 0, output: 0 } }],
     };
     await writeFile(join(dir, 'verify-7.json'), JSON.stringify(file));
-    ({ ledgers } = await finalize([{ title: 'a [okayd:7.1]', status: 'passed' }], { dir, github: false }));
+    ({ ledgers } = await finalize([{ title: 'a [okproof:7.1]', status: 'passed' }], { dir, github: false }));
     assert.equal(ledgers[0]!.proven, true);
   } finally {
     await rm(dir, { recursive: true, force: true });

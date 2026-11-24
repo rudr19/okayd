@@ -1,6 +1,6 @@
 name: Release
 
-# The only way an official Okayd version is published. Runs when a GitHub
+# The only way an official okproof version is published. Runs when a GitHub
 # release is published from a v* tag on main. Publishes to npm with a
 # provenance attestation and attests the tarball, so anyone can verify which
 # commit and workflow built it (npm audit signatures / gh attestation verify).
@@ -40,12 +40,12 @@ jobs:
       - run: npm pack
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
-          subject-path: okayd-*.tgz
+          subject-path: okproof-*.tgz
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # Moves the major tag (v0) to the released commit so `uses: rudr19/okayd@v0`
+  # Moves the major tag (v0) to the released commit so `uses: rudr19/okproof@v0`
   # follows the latest release. Runs only after a successful publish, and holds
   # the only contents: write permission in this workflow.
   move-major-tag:

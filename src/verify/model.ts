@@ -98,7 +98,7 @@ interface AnthropicMessage {
 }
 
 export interface AnthropicModelOptions {
-  /** Required unless OKAYD_ANTHROPIC_API_KEY is set. ANTHROPIC_API_KEY is never read. */
+  /** Required unless OKPROOF_ANTHROPIC_API_KEY is set. ANTHROPIC_API_KEY is never read. */
   apiKey?: string;
   model?: string;
   effort?: Effort;
@@ -108,13 +108,13 @@ export interface AnthropicModelOptions {
 }
 
 export const MISSING_KEY_MESSAGE =
-  'Set OKAYD_ANTHROPIC_API_KEY (or pass apiKey) to use the Anthropic model. Okayd never falls back to ANTHROPIC_API_KEY, auth tokens or CLI profiles, so you choose which account pays.';
+  'Set OKPROOF_ANTHROPIC_API_KEY (or pass apiKey) to use the Anthropic model. okproof never falls back to ANTHROPIC_API_KEY, auth tokens or CLI profiles, so you choose which account pays.';
 export const MISSING_SDK_MESSAGE = 'Install @anthropic-ai/sdk to use the Anthropic model: npm i @anthropic-ai/sdk';
 
 /**
  * Adapter for the Anthropic Messages API. UNTESTED against the live API.
  *
- * The key must be explicit (option or OKAYD_ANTHROPIC_API_KEY). It deliberately
+ * The key must be explicit (option or OKPROOF_ANTHROPIC_API_KEY). It deliberately
  * does not read ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN or any CLI auth profile:
  * a QA agent can spend a lot, and the user must pick which account pays.
  */
@@ -126,7 +126,7 @@ export class AnthropicModel implements ModelClient {
   private client: AnthropicLike | undefined;
 
   constructor(opts: AnthropicModelOptions = {}) {
-    this.apiKey = opts.apiKey ?? process.env.OKAYD_ANTHROPIC_API_KEY;
+    this.apiKey = opts.apiKey ?? process.env.OKPROOF_ANTHROPIC_API_KEY;
     if (!this.apiKey && !opts.client) throw new Error(MISSING_KEY_MESSAGE);
     this.model = opts.model ?? DEFAULT_MODEL;
     this.effort = opts.effort ?? 'medium';

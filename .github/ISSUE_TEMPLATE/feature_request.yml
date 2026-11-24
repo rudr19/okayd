@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest an idea for Okayd
+description: Suggest an idea for okproof
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What are you trying to prove that Okayd can't do today?
+      description: What are you trying to prove that okproof can't do today?
     validations:
       required: true
   - type: textarea

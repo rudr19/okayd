@@ -12,7 +12,7 @@ for a change.
 
 ## Next
 
-- [ ] **Okayd MCP server and agent skill.** Coding agents check `okayd status`
+- [ ] **okproof MCP server and agent skill.** Coding agents check `okproof status`
       before they claim "done" and see which criteria are unmet.
 - [ ] **CTRF ingest.** Read the Common Test Report Format many runners emit.
 - [ ] **Verifier agent.** For each criterion the diff touches, a separate agent

@@ -1,44 +1,44 @@
-# Okayd
+# okproof
 
-**Your agent says it's done. Okayd proves it, criterion by criterion.**
+**Your agent says it's done. okproof proves it, criterion by criterion.**
 
-[![CI](https://github.com/rudr19/okayd/actions/workflows/ci.yml/badge.svg)](https://github.com/rudr19/okayd/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/rudr19/okayd/actions/workflows/codeql.yml/badge.svg)](https://github.com/rudr19/okayd/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rudr19/okayd/badge)](https://scorecard.dev/viewer/?uri=github.com/rudr19/okayd)
-[![npm version](https://img.shields.io/npm/v/okayd.svg)](https://www.npmjs.com/package/okayd)
-[![License](https://img.shields.io/github/license/rudr19/okayd.svg)](LICENSE)
+[![CI](https://github.com/rudr19/okproof/actions/workflows/ci.yml/badge.svg)](https://github.com/rudr19/okproof/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rudr19/okproof/actions/workflows/codeql.yml/badge.svg)](https://github.com/rudr19/okproof/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rudr19/okproof/badge)](https://scorecard.dev/viewer/?uri=github.com/rudr19/okproof)
+[![npm version](https://img.shields.io/npm/v/okproof.svg)](https://www.npmjs.com/package/okproof)
+[![License](https://img.shields.io/github/license/rudr19/okproof.svg)](LICENSE)
 
-> Browser agents act. Test frameworks run. CI reports. **Okayd proves.**
-> [Why Okayd](WHY-OKAYD.md) · [Vision](VISION.md) · [Roadmap](ROADMAP.md) · [Governance](GOVERNANCE.md) · [Security](SECURITY.md)
+> Browser agents act. Test frameworks run. CI reports. **okproof proves.**
+> [Why okproof](WHY-OKPROOF.md) · [Vision](VISION.md) · [Roadmap](ROADMAP.md) · [Governance](GOVERNANCE.md) · [Security](SECURITY.md)
 
-Okayd checks a pull request against the acceptance criteria in its issue.
+okproof checks a pull request against the acceptance criteria in its issue.
 The criteria go in a proof file in the repo. Tests claim criteria by tag. The
 run ends with a ledger that marks each criterion **met**, **failed** or
 **untested**. Untested never counts as a pass, and neither does a flaky pass.
 
-Okayd doesn't run your tests. It works with **Playwright Test** directly, and
+okproof doesn't run your tests. It works with **Playwright Test** directly, and
 with **any runner that writes JUnit XML**: Jest, Vitest, pytest, JUnit,
 Cypress, Go and more. It has no runtime dependencies.
 
 ## Install
 
 ```bash
-npm i -D okayd
-npx okayd check
+npm i -D okproof
+npx okproof check
 ```
 
-Okayd has no runtime dependencies. The core (proof files, ledger, gate,
+okproof has no runtime dependencies. The core (proof files, ledger, gate,
 ingest, MCP server, Playwright reporter) runs on Node 20 or later. The browser
 driver and the verifier use Node's built-in WebSocket and need Node 22 or later.
 
 ## See it in action
 
 An agent says "All 5 acceptance criteria are implemented and tested. Done."
-Okayd checks the claim against the criteria in the issue:
+okproof checks the claim against the criteria in the issue:
 
 ```text
   Agent says: Done (5/5)
-  Okayd: 3 met · 1 failed · 1 untested — NOT PROVEN
+  okproof: 3 met · 1 failed · 1 untested — NOT PROVEN
 ```
 
 Three criteria pass in a real browser. One fails, and a verifier refutation is
@@ -53,7 +53,7 @@ confirmed by replaying it with no model. One has no test at all. The gate exits
 
 ## 1. Write a proof file
 
-`.okayd/142.md`:
+`.okproof/142.md`:
 
 ```md
 ## #142 Pro upgrade
@@ -62,12 +62,12 @@ confirmed by replaying it with no model. One has no test at all. The gate exits
 - [ ] A viewer (non-admin) cannot see the upgrade button
 ```
 
-Run `npx okayd check` to print the tag for each criterion.
+Run `npx okproof check` to print the tag for each criterion.
 
 ## 2. Claim criteria in test names
 
 ```ts
-test('member upgrades to Pro [okayd:142.1] [okayd:142.2]', async ({ page }) => {
+test('member upgrades to Pro [okproof:142.1] [okproof:142.2]', async ({ page }) => {
   // ...
 });
 ```
@@ -79,7 +79,7 @@ test('member upgrades to Pro [okayd:142.1] [okayd:142.2]', async ({ page }) => {
 ```ts
 // playwright.config.ts
 export default defineConfig({
-  reporter: [['list'], ['okayd/playwright']],
+  reporter: [['list'], ['okproof/playwright']],
 });
 ```
 
@@ -90,7 +90,7 @@ When Playwright records a trace, the ledger links it as evidence.
 
 ```bash
 npx vitest run --reporter=junit --outputFile=junit.xml
-npx okayd ingest junit.xml
+npx okproof ingest junit.xml
 ```
 
 Or use CTRF (Common Test Report Format, ctrf.io). Many runners have a CTRF
@@ -98,26 +98,26 @@ reporter; ingest the JSON it writes. A test with `flaky: true` or retries that
 passes is flaky, which is not proven.
 
 ```bash
-npx okayd ingest ctrf-report.json
+npx okproof ingest ctrf-report.json
 ```
 
 `ingest` picks the format from the file (`.json` is CTRF, otherwise JUnit XML).
 Force it with `--format junit` or `--format ctrf`.
 
-Both write `.okayd/ledger-<issue>.json` and `.md`. In GitHub Actions they also
+Both write `.okproof/ledger-<issue>.json` and `.md`. In GitHub Actions they also
 write the ledger to the job summary and post it as one pull request comment
 that reruns update. Give the job `pull-requests: write`, or pass
 `{ github: false }` to turn this off.
 
 ## 4. Gate the merge
 
-`npx okayd gate` exits 1 unless every criterion is met. Make it a required
+`npx okproof gate` exits 1 unless every criterion is met. Make it a required
 check.
 
 ## Weak tests
 
 A tag is a claim; an assertion is evidence. A tagged test that passes but makes
-zero assertions proves nothing, so Okayd will not call its criterion met.
+zero assertions proves nothing, so okproof will not call its criterion met.
 Silence is not proof.
 
 A criterion gets one of four verdicts:
@@ -129,7 +129,7 @@ A criterion gets one of four verdicts:
 
 A test is weak when its assertion count is exactly `0`. An unknown count (the
 runner did not say) is not weak, so runners without counts keep working. Pass
-`--strict-assertions` (or set `OKAYD_STRICT_ASSERTIONS=1`) to `okayd ingest`,
+`--strict-assertions` (or set `OKPROOF_STRICT_ASSERTIONS=1`) to `okproof ingest`,
 or `strictAssertions: true` to the reporter, to treat unknown as weak.
 
 How each runner reports counts:
@@ -140,21 +140,21 @@ How each runner reports counts:
 
 A confirmed verifier refutation still makes a criterion `failed`.
 
-### `okayd lint`
+### `okproof lint`
 
 A static check that needs no test run:
 
 ```bash
-npx okayd lint                       # scan the working directory
-npx okayd lint --tests e2e           # limit to a path, file or glob such as "e2e/**/*.spec.ts"
+npx okproof lint                       # scan the working directory
+npx okproof lint --tests e2e           # limit to a path, file or glob such as "e2e/**/*.spec.ts"
 ```
 
-It finds tests whose title has `[okayd:<id>]` and reports the ones with no
+It finds tests whose title has `[okproof:<id>]` and reports the ones with no
 assertion in the body (`expect(`, `assert`, `.should(`, `t.Error`, `t.Fatal`,
 `require.`, `toBe`, `toEqual`, `toHave`, ...). It also reports tags naming a
 criterion that no proof file lists, and criteria no tagged test claims. It
 exits 1 on a weak test or a dangling tag. Untested criteria are listed but do
-not fail the run. Also available as `lintTests()` and the `okayd_lint` MCP tool.
+not fail the run. Also available as `lintTests()` and the `okproof_lint` MCP tool.
 
 It scans `*.test.*`, `*.spec.*`, `*.e2e.*`, `test_*.py`, `*_test.py` and
 `*_test.go`, skipping `node_modules`, `dist` and `.git`, files over 1 MB and
@@ -170,30 +170,30 @@ The ledger counts from your runner are the authority.
 The GitHub issue is the source of truth. Instead of copying its checkboxes by hand:
 
 ```sh
-npx okayd sync --issue 142            # needs GITHUB_REPOSITORY (or --repo owner/name) and GITHUB_TOKEN/GH_TOKEN
-npx okayd sync --issue 142 --body-file issue.md [--title "Pro upgrade"]   # offline
-npx okayd sync --issue 142 --check    # CI: change nothing, exit 1 on drift
+npx okproof sync --issue 142            # needs GITHUB_REPOSITORY (or --repo owner/name) and GITHUB_TOKEN/GH_TOKEN
+npx okproof sync --issue 142 --body-file issue.md [--title "Pro upgrade"]   # offline
+npx okproof sync --issue 142 --check    # CI: change nothing, exit 1 on drift
 ```
 
-This writes `.okayd/142.md` (or the `[dir]` you pass; it must be inside the current directory). Rules:
+This writes `.okproof/142.md` (or the `[dir]` you pass; it must be inside the current directory). Rules:
 
 - `- [ ]`, `- [x]` and `* [ ]` lines count; checkboxes inside fenced code blocks do not.
 - If the issue has a heading named "Acceptance criteria" (any level), only the checkboxes under it count, up to the next heading of the same or higher level. Otherwise all checkboxes count.
 - On an existing file, criteria already there keep their order and ids, new ones are appended, deleted ones are removed. Reordering in the issue alone is not drift.
-- Ids are positional (`142.<n>`), so removing a middle criterion renumbers the later ones. Okayd prints a warning listing `[okayd:142.3] -> [okayd:142.2]` so you can re-tag those tests.
+- Ids are positional (`142.<n>`), so removing a middle criterion renumbers the later ones. okproof prints a warning listing `[okproof:142.3] -> [okproof:142.2]` so you can re-tag those tests.
 - The file is rewritten from the issue, so hand-added notes in it are lost. An edited checkbox counts as one removed and one added.
 - With `--body-file` the title comes from `--title`, else the first heading that is not "Acceptance criteria", else the file's current title.
-- `--check` fails with "proof file is out of date with issue #n; run okayd sync".
+- `--check` fails with "proof file is out of date with issue #n; run okproof sync".
 
 In the Action, `sync: check` (the default) does this on every run. It uses the `issue` input, or else the issues the PR body closes ("Closes #N", "Fixes #N", "Resolves #N" in the same repo, ignoring code blocks and HTML comments) that already have a proof file in `dir`. `sync: write` only rewrites the files in the workspace; committing them is up to your workflow. `sync: off` skips it.
 
 ## GitHub Action
 
-Okayd ships as a composite action. Run your tests so they write JUnit XML, then
+okproof ships as a composite action. Run your tests so they write JUnit XML, then
 call it:
 
 ```yaml
-name: Okayd
+name: okproof
 on: pull_request
 
 jobs:
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write # lets Okayd post and update its one PR comment
+      pull-requests: write # lets okproof post and update its one PR comment
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -209,34 +209,34 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx vitest run --reporter=junit --outputFile=junit.xml
-      - id: okayd
-        uses: rudr19/okayd@v0
+      - id: okproof
+        uses: rudr19/okproof@v0
         with:
           results: junit.xml
-      - run: echo "proven=${{ steps.okayd.outputs.proven }}"
+      - run: echo "proven=${{ steps.okproof.outputs.proven }}"
 ```
 
-Inputs: `results` (JUnit XML path, optional), `dir` (default `.okayd`),
+Inputs: `results` (JUnit XML path, optional), `dir` (default `.okproof`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
 `issue` (issue number to sync from; default: detected from the PR body),
 `sync` (`check` default, `write` or `off`), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as
-`OKAYD_NO_COMMENT=1`.
+`OKPROOF_NO_COMMENT=1`.
 
 Releases are tagged `v0.x`, and a moving `v0` tag points at the latest one.
 Pin `@v0` to follow it, or a full `v0.x.y` tag to hold still.
 
 ## Browser driver
 
-Okayd ships its own Chrome driver with zero runtime dependencies. It speaks the
+okproof ships its own Chrome driver with zero runtime dependencies. It speaks the
 DevTools Protocol directly over Node's built-in WebSocket (Node 22 or later) and
 is built for agents: it returns short text snapshots of the accessibility tree
 and acts by ref.
 
 ```ts
-import { Browser } from 'okayd/driver';
+import { Browser } from 'okproof/driver';
 
 const browser = await Browser.launch();
 try {
@@ -250,12 +250,12 @@ try {
 }
 ```
 
-Set `OKAYD_CHROME` to use a specific Chrome, Chromium or Edge binary. Refs are
+Set `OKPROOF_CHROME` to use a specific Chrome, Chromium or Edge binary. Refs are
 only valid until the next snapshot.
 
 ## Verifier
 
-`okayd verify` points an adversarial QA agent at your running app (a preview
+`okproof verify` points an adversarial QA agent at your running app (a preview
 deployment, say) and tells it to prove each criterion **false**. It tries other
 roles, bad and huge input, double submit, reload mid-flow, back, keyboard-only,
 a 375px viewport and offline. It acts only through the driver above.
@@ -266,23 +266,23 @@ recorded actions are replayed with no model**, in a fresh browser. Otherwise it
 is listed as unconfirmed and does not fail the criterion.
 
 ```bash
-export OKAYD_ANTHROPIC_API_KEY=...        # explicit key, see below
-npx okayd verify --url https://preview.example.com --issue 142
+export OKPROOF_ANTHROPIC_API_KEY=...        # explicit key, see below
+npx okproof verify --url https://preview.example.com --issue 142
 ```
 
-Options: `--dir .okayd`, `--max-steps 15`, `--model claude-opus-5-5`,
+Options: `--dir .okproof`, `--max-steps 15`, `--model claude-opus-5-5`,
 `--effort medium`. It writes:
 
-- `.okayd/verify-<issue>.json`: a verdict per criterion (`refuted`, `held` or
+- `.okproof/verify-<issue>.json`: a verdict per criterion (`refuted`, `held` or
   `inconclusive`), findings, and the recorded actions
-- `.okayd/repro/<criterion>.json`: a model-free regression script
-- `.okayd/screenshots/`: a screenshot of each confirmed failure
+- `.okproof/repro/<criterion>.json`: a model-free regression script
+- `.okproof/screenshots/`: a screenshot of each confirmed failure
 
-`okayd ingest` then reads `verify-<issue>.json`: a criterion with a confirmed
+`okproof ingest` then reads `verify-<issue>.json`: a criterion with a confirmed
 refutation becomes **failed** with the evidence `refuted by verifier: <title>
-(repro: .okayd/repro/<id>.json)`, whatever the tests said.
+(repro: .okproof/repro/<id>.json)`, whatever the tests said.
 
-**Replay for free.** `okayd verify --replay-only [--url ...]` re-runs the saved
+**Replay for free.** `okproof verify --replay-only [--url ...]` re-runs the saved
 repro scripts with no model and no key. It exits 1 while a bug still
 reproduces, so a fixed bug becomes a free regression check in CI.
 
@@ -294,15 +294,15 @@ reappearing on replay. A confirmed finding of severity 3 or more refutes the
 criterion. Unnamed controls and overflow are severity 2: reported, not failing.
 
 **Which account pays.** The Anthropic adapter needs an explicit key, either
-`new AnthropicModel({ apiKey })` or `OKAYD_ANTHROPIC_API_KEY`. It never falls
+`new AnthropicModel({ apiKey })` or `OKPROOF_ANTHROPIC_API_KEY`. It never falls
 back to `ANTHROPIC_API_KEY`, auth tokens or CLI profiles, so you choose which
-account pays. Without a key, `okayd verify` exits 2. `@anthropic-ai/sdk` is an
+account pays. Without a key, `okproof verify` exits 2. `@anthropic-ai/sdk` is an
 optional peer dependency, loaded only when used: `npm i @anthropic-ai/sdk`. The
 core stays dependency free, and any `ModelClient` works:
 
 ```ts
-import { verify, AnthropicModel } from 'okayd/verify';
-await verify({ baseUrl, model: new AnthropicModel({ apiKey }), dir: '.okayd' });
+import { verify, AnthropicModel } from 'okproof/verify';
+await verify({ baseUrl, model: new AnthropicModel({ apiKey }), dir: '.okproof' });
 ```
 
 Status: the replay, detectors, agent loop and ledger integration are tested
@@ -314,25 +314,25 @@ tab, no file uploads or dialogs.
 
 ## Use with coding agents
 
-`okayd mcp` runs an MCP server over stdio (no dependencies) so Claude Code,
+`okproof mcp` runs an MCP server over stdio (no dependencies) so Claude Code,
 Cursor and Codex can check the definition of done before they claim a task is
 finished. For Claude Code, add this to `.mcp.json`:
 
 ```json
-{ "mcpServers": { "okayd": { "command": "npx", "args": ["okayd", "mcp"] } } }
+{ "mcpServers": { "okproof": { "command": "npx", "args": ["okproof", "mcp"] } } }
 ```
 
-Tools (all take an optional `dir`, default `.okayd`, which must stay inside the
+Tools (all take an optional `dir`, default `.okproof`, which must stay inside the
 working directory):
 
-- `okayd_criteria` lists criteria and the `[okayd:<issue>.<n>]` tag for each test title.
-- `okayd_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
-- `okayd_ingest_junit` builds ledgers from a JUnit XML report.
-- `okayd_lint` finds tagged tests with no assertion, dangling tags and untested criteria. `okayd_status` reports criteria whose tests passed without asserting as unproven and names the tests.
-- `okayd_add_criterion` appends a criterion. Agents can add criteria but not remove or edit them.
+- `okproof_criteria` lists criteria and the `[okproof:<issue>.<n>]` tag for each test title.
+- `okproof_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
+- `okproof_ingest_junit` builds ledgers from a JUnit XML report.
+- `okproof_lint` finds tagged tests with no assertion, dangling tags and untested criteria. `okproof_status` reports criteria whose tests passed without asserting as unproven and names the tests.
+- `okproof_add_criterion` appends a criterion. Agents can add criteria but not remove or edit them.
 
-`skills/okayd/SKILL.md` is a Claude Code skill that tells agents to follow this
-loop. Copy it to `.claude/skills/okayd/SKILL.md`.
+`skills/okproof/SKILL.md` is a Claude Code skill that tells agents to follow this
+loop. Copy it to `.claude/skills/okproof/SKILL.md`.
 
 ## Roadmap
 
@@ -340,7 +340,7 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 - [x] Ledger posted as one PR comment (updated on reruns) and in the job summary
 - [x] Playwright Test reporter and JUnit ingest for any runner
 - [x] Own Chrome driver (DevTools Protocol, no dependencies)
-- [x] MCP server so coding agents check "done" through Okayd
+- [x] MCP server so coding agents check "done" through okproof
 - [x] CTRF ingest
 - [x] Verifier agent that attacks each criterion on the preview deployment
 - [x] Weak-test check: a tagged test that asserts nothing cannot make a criterion met
@@ -349,7 +349,7 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 
 ## License
 
-Apache-2.0 for this package. Copyright © 2026 Rudra Kumar Pandey. "Okayd" is a
+Apache-2.0 for this package. Copyright © 2026 Rudra Kumar Pandey. "okproof" is a
 trademark of its author; see [TRADEMARK.md](TRADEMARK.md). Contributions need a
 signed CLA (see [CLA.md](CLA.md)). Official releases are published only by this
 repo's release workflow, with npm provenance.

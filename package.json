@@ -1,22 +1,22 @@
 {
-  "name": "okayd",
+  "name": "okproof",
   "version": "0.1.0",
   "description": "Prove agent-written pull requests against their acceptance criteria. Works with Playwright Test or any runner that writes JUnit XML.",
   "license": "Apache-2.0",
   "author": "Rudra Kumar Pandey",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rudr19/okayd.git"
+    "url": "git+https://github.com/rudr19/okproof.git"
   },
-  "homepage": "https://github.com/rudr19/okayd#readme",
+  "homepage": "https://github.com/rudr19/okproof#readme",
   "bugs": {
-    "url": "https://github.com/rudr19/okayd/issues"
+    "url": "https://github.com/rudr19/okproof/issues"
   },
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "bin": {
-    "okayd": "dist/src/cli.js"
+    "okproof": "dist/src/cli.js"
   },
   "files": [
     "dist/src",

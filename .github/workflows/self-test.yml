@@ -14,15 +14,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./
-        id: okayd
+        id: okproof
         with:
           results: examples/action-fixture/junit.xml
-          dir: examples/action-fixture/.okayd
+          dir: examples/action-fixture/.okproof
           comment: 'false'
       - name: Assert the fixture is proven
         env:
-          PROVEN: ${{ steps.okayd.outputs.proven }}
-          SUMMARY: ${{ steps.okayd.outputs.summary }}
+          PROVEN: ${{ steps.okproof.outputs.proven }}
+          SUMMARY: ${{ steps.okproof.outputs.summary }}
         run: |
           echo "$SUMMARY"
           [ "$PROVEN" = "true" ]
@@ -30,4 +30,4 @@ jobs:
         run: >-
           node dist/src/cli.js sync --issue 1 --check
           --body-file examples/action-fixture/issue-1.md
-          examples/action-fixture/.okayd
+          examples/action-fixture/.okproof

@@ -1,9 +1,9 @@
-# Okayd vision
+# okproof vision
 
 ## Mission
 
 **Make "done" mean proven.** When a coding agent (or a person) says a change is
-finished, Okayd shows, criterion by criterion, whether the evidence agrees.
+finished, okproof shows, criterion by criterion, whether the evidence agrees.
 
 ## The problem
 
@@ -12,7 +12,7 @@ longer keeps up, and an agent that writes its own tests mostly confirms its own
 assumptions. Teams need a cheap, independent answer to one question: *did this
 change do what the issue asked for?*
 
-## What Okayd is
+## What okproof is
 
 1. **A contract.** Acceptance criteria live in a proof file in the repo,
    versioned and reviewed like code. The agent can't quietly weaken them.
@@ -21,7 +21,7 @@ change do what the issue asked for?*
 3. **A gate.** A pull request merges only when every criterion is met.
 4. **An independent verifier** (in progress). A separate agent, not the one that
    wrote the code, tries to prove each criterion false on the preview
-   deployment, using Okayd's own browser driver. Passing runs replay without a
+   deployment, using okproof's own browser driver. Passing runs replay without a
    model, so they become free, repeatable regression tests.
 
 ## Principles
@@ -36,10 +36,10 @@ reason.
   from an assertion that passed or failed, never from a model's opinion.
 - **You own everything.** Proof files, tests and ledgers are plain files in your
   repo. No lock-in, no required service.
-- **Built from scratch, zero runtime dependencies.** Okayd owns its full chain:
+- **Built from scratch, zero runtime dependencies.** okproof owns its full chain:
   spec, ledger, driver, verifier and replay.
 - **Works with what you have.** Playwright Test, JUnit XML from any runner, and
-  Okayd's own driver all feed the same ledger.
+  okproof's own driver all feed the same ledger.
 - **Cheap by default.** Model calls only where they add value. Replays cost
   nothing.
 

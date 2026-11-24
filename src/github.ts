@@ -4,7 +4,7 @@ import { appendFile, readFile } from 'node:fs/promises';
 import { renderLedgerMarkdown, type Ledger } from './ledger.js';
 
 /** Hidden marker a rerun uses to find and update its own comment. */
-export const COMMENT_MARKER = '<!-- okayd-ledger -->';
+export const COMMENT_MARKER = '<!-- okproof-ledger -->';
 
 export interface GitHubEnv {
   GITHUB_ACTIONS?: string;
@@ -26,8 +26,8 @@ export interface PublishResult {
 export function renderComment(ledgers: Ledger[]): string {
   const proven = ledgers.every((l) => l.proven);
   const head = proven
-    ? '## Okayd: every criterion proven'
-    : '## Okayd: not proven yet';
+    ? '## okproof: every criterion proven'
+    : '## okproof: not proven yet';
   const unproven = ledgers.flatMap((l) => l.entries.filter((e) => e.verdict === 'unproven').map((e) => `#${l.issue} ${e.id}`));
   const note = unproven.length
     ? ['', `Silence is not proof: ${unproven.join(', ')} only passed tests that made no assertions. Add a real assertion to each tagged test.`]
@@ -58,7 +58,7 @@ export const MAX_COMMENT_CHARS = 60_000;
 
 export function capBody(body: string): string {
   if (body.length <= MAX_COMMENT_CHARS) return body;
-  return body.slice(0, MAX_COMMENT_CHARS) + '\n\n_Ledger truncated. See the job summary or `.okayd/ledger-*.md` for the full table._\n';
+  return body.slice(0, MAX_COMMENT_CHARS) + '\n\n_Ledger truncated. See the job summary or `.okproof/ledger-*.md` for the full table._\n';
 }
 
 /** The API origin: https only, no credentials, query or fragment. */

@@ -1,4 +1,4 @@
-# Contributing to Okayd
+# Contributing to okproof
 
 Thanks for helping. A few rules keep the project healthy and its ownership clear.
 
@@ -11,7 +11,7 @@ Thanks for helping. A few rules keep the project healthy and its ownership clear
 
 Every contributor signs the [CLA](CLA.md) once. Comment on your first pull request:
 
-> I have read the Okayd CLA and I agree to it.
+> I have read the okproof CLA and I agree to it.
 
 Pull requests without a signed CLA can't be merged.
 
@@ -37,5 +37,5 @@ Requirements: Node 20 or later.
 
 ## Trademark
 
-The code is Apache-2.0. The name "Okayd" and its logo are not covered by that
+The code is Apache-2.0. The name "okproof" and its logo are not covered by that
 license. See [NOTICE](NOTICE).

@@ -1,6 +1,6 @@
 // Issue -> proof file sync. The GitHub issue is the source of truth for the
-// acceptance criteria; `okayd sync` rewrites .okayd/<issue>.md from it, and
-// `okayd sync --check` fails CI when the proof file has drifted.
+// acceptance criteria; `okproof sync` rewrites .okproof/<issue>.md from it, and
+// `okproof sync --check` fails CI when the proof file has drifted.
 //
 // Which checkboxes count:
 //   - "- [ ]", "- [x]", "* [ ]" lines (any indent).
@@ -210,11 +210,11 @@ export function describeSync(issue: number, r: SyncResult, wrote: boolean): { li
   if (r.created) lines.push(`#${issue}: proof file ${verb}created at ${r.path} (${r.added.length} criteria)`);
   else if (!r.changed) lines.push(`#${issue}: proof file is in sync (${r.unchanged.length} unchanged)`);
   else lines.push(`#${issue}: proof file ${verb}updated: ${r.added.length} added, ${r.removed.length} removed, ${r.unchanged.length} unchanged${r.titleChanged ? ', title changed' : ''}`);
-  for (const a of r.added) lines.push(`  + [okayd:${a.id}] ${a.text}`);
-  for (const x of r.removed) lines.push(`  - [okayd:${x.id}] ${x.text}`);
+  for (const a of r.added) lines.push(`  + [okproof:${a.id}] ${a.text}`);
+  for (const x of r.removed) lines.push(`  - [okproof:${x.id}] ${x.text}`);
   if (r.renumbered.length > 0) {
     warnings.push(`warning: removing criteria renumbered later ones. Re-tag these tests:`);
-    for (const n of r.renumbered) warnings.push(`  [okayd:${n.from}] -> [okayd:${n.to}] ${n.text}`);
+    for (const n of r.renumbered) warnings.push(`  [okproof:${n.from}] -> [okproof:${n.to}] ${n.text}`);
   }
   return { lines, warnings };
 }

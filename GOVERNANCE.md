@@ -29,7 +29,7 @@
 
 Releases are cut from `main` by the release workflow only. Every published
 npm version carries a provenance attestation linking it to the exact commit and
-workflow run. Builds from anywhere else are not official Okayd releases.
+workflow run. Builds from anywhere else are not official okproof releases.
 
 ## Ownership and licensing
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
 async function setup(body: string) {
-  const cwd = await mkdtemp(join(tmpdir(), 'okayd-sync-cli-'));
+  const cwd = await mkdtemp(join(tmpdir(), 'okproof-sync-cli-'));
   await writeFile(join(cwd, 'issue.md'), body);
   const run = (...a: string[]) => spawnSync(process.execPath, [cli, 'sync', ...a], { cwd, encoding: 'utf8' });
   return { cwd, run };
@@ -20,7 +20,7 @@ test('sync --body-file writes the proof file, titled from the first heading', as
   const r = run('--issue', '12', '--body-file', 'issue.md');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /#12: proof file created/);
-  assert.equal(await readFile(join(cwd, '.okayd', '12.md'), 'utf8'), '## #12 Pro upgrade\n- [ ] one\n- [ ] two\n');
+  assert.equal(await readFile(join(cwd, '.okproof', '12.md'), 'utf8'), '## #12 Pro upgrade\n- [ ] one\n- [ ] two\n');
   const again = run('--issue', '12', '--body-file', 'issue.md', '--check');
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /in sync/);
@@ -32,8 +32,8 @@ test('sync --check exits 1 on drift, changes nothing, and says how to fix it', a
   await writeFile(join(cwd, 'issue.md'), '# T\n- [ ] one\n- [ ] three\n');
   const r = run('--issue', '3', '--body-file', 'issue.md', '--check');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /proof file is out of date with issue #3; run okayd sync/);
-  assert.equal(await readFile(join(cwd, '.okayd', '3.md'), 'utf8'), '## #3 T\n- [ ] one\n- [ ] two\n');
+  assert.match(r.stderr, /proof file is out of date with issue #3; run okproof sync/);
+  assert.equal(await readFile(join(cwd, '.okproof', '3.md'), 'utf8'), '## #3 T\n- [ ] one\n- [ ] two\n');
   // Missing file also counts as drift in check mode.
   assert.equal(run('--issue', '4', '--body-file', 'issue.md', '--check').status, 1);
 });
@@ -45,7 +45,7 @@ test('sync warns about renumbered ids when a middle criterion is removed', async
   const r = run('--issue', '5', '--body-file', 'issue.md');
   assert.equal(r.status, 0);
   assert.match(r.stderr, /warning:.*renumbered/);
-  assert.match(r.stderr, /\[okayd:5\.3\] -> \[okayd:5\.2\] c/);
+  assert.match(r.stderr, /\[okproof:5\.3\] -> \[okproof:5\.2\] c/);
 });
 
 test('sync usage errors exit 2', async () => {

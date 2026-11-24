@@ -1,6 +1,6 @@
 // Static weak-test lint. A tag is a claim; an assertion is evidence.
 //
-// Scans test source for tests whose title carries [okayd:<id>] and reports the
+// Scans test source for tests whose title carries [okproof:<id>] and reports the
 // ones whose body contains no assertion. Heuristic and runner-neutral: no
 // parser, just a bracket/string/comment-aware scanner (JS, TS, Go) and an
 // indentation block reader (Python). Every pass over the text is linear.
@@ -9,11 +9,11 @@ import { join, resolve, relative, sep } from 'node:path';
 import { parseProof } from './proof.js';
 
 export interface LintOptions {
-  /** Project root: where test files are searched and where ".okayd" lives. Default ".". */
+  /** Project root: where test files are searched and where ".okproof" lives. Default ".". */
   dir?: string;
   /** Limit the scan: a directory, a file, or a simple glob such as "e2e/**\/*.spec.ts". */
   tests?: string;
-  /** Folder holding proof files. Default "<dir>/.okayd". */
+  /** Folder holding proof files. Default "<dir>/.okproof". */
   proofDir?: string;
 }
 
@@ -203,7 +203,7 @@ interface FileFindings {
   tags: { id: string; line: number; title: string }[];
 }
 
-const TAG_AT = /\[okayd:([\w-]+\.\d+)\]/y;
+const TAG_AT = /\[okproof:([\w-]+\.\d+)\]/y;
 
 function lineAt(src: string, idx: number, cache: { pos: number; line: number; nl: number }): number {
   // Tags arrive in ascending order; each newline is found once (amortised linear).
@@ -240,7 +240,7 @@ export function analyzeSource(src: string, python: boolean): FileFindings {
   let lastTest: FoundTest | undefined;
   let pos = 0;
   while (out.tags.length < MAX_TAGS_PER_FILE) {
-    const idx = src.indexOf('[okayd:', pos);
+    const idx = src.indexOf('[okproof:', pos);
     if (idx === -1) break;
     pos = idx + 7;
     TAG_AT.lastIndex = idx;
@@ -397,7 +397,7 @@ async function loadCriteria(proofDir: string): Promise<{ id: string; text: strin
       if (text === undefined) continue;
       for (const c of parseProof(text).criteria) out.push({ id: c.id, text: c.text });
     } catch {
-      // An unreadable proof file is reported by `okayd check`, not here.
+      // An unreadable proof file is reported by `okproof check`, not here.
     }
   }
   return out;
@@ -462,7 +462,7 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     pending.push({ file: rel, tags: found.tags });
   }
 
-  const criteria = await loadCriteria(options.proofDir ? resolve(root, options.proofDir) : join(root, '.okayd'));
+  const criteria = await loadCriteria(options.proofDir ? resolve(root, options.proofDir) : join(root, '.okproof'));
   const untested: LintResult['untested'] = [];
   if (!criteria || criteria.length === 0) {
     notes.push('no proof files found: skipped the dangling-tag and untested-criterion checks');
@@ -475,13 +475,13 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
   }
 
   const lines: string[] = [];
-  for (const w of weak) lines.push(`WEAK      ${w.file}:${w.line}  [okayd:${w.ids.join(', ')}] no assertion in test body: ${w.title}`);
-  for (const d of dangling) lines.push(`DANGLING  ${d.file}:${d.line}  [okayd:${d.ids[0]}] no such criterion in any proof file`);
+  for (const w of weak) lines.push(`WEAK      ${w.file}:${w.line}  [okproof:${w.ids.join(', ')}] no assertion in test body: ${w.title}`);
+  for (const d of dangling) lines.push(`DANGLING  ${d.file}:${d.line}  [okproof:${d.ids[0]}] no such criterion in any proof file`);
   for (const u of untested) lines.push(`UNTESTED  ${u.id}  ${u.text}: no tagged test`);
   for (const n of notes) lines.push(`note: ${n}`);
   const ok = weak.length === 0 && dangling.length === 0;
   lines.push(
-    `okayd lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
+    `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
   );
   return { weak, dangling, untested, filesScanned: scanned, notes, lines, ok };
 }

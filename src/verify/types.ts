@@ -33,7 +33,7 @@ export interface VerifyFile {
   results: VerifyResult[];
 }
 
-/** `.okayd/repro/<criterionId>.json`: a model-free regression script. */
+/** `.okproof/repro/<criterionId>.json`: a model-free regression script. */
 export interface ReproFile {
   version: 1;
   criterionId: string;

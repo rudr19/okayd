@@ -1,11 +1,11 @@
 // Small helpers shared by the demo tests and run-demo.mjs. They sit on top of
-// Okayd's own driver (okayd/driver) and need a build: `npm run build`.
+// okproof's own driver (okproof/driver) and need a build: `npm run build`.
 import { findChrome } from '../../dist/src/driver/index.js';
 import { parseSnapshotRefs } from '../../dist/src/verify/index.js';
 
 /** Why the browser steps cannot run here, or false when they can. */
 export function browserSkipReason() {
-  if (!findChrome()) return 'no Chrome, Chromium or Edge found (set OKAYD_CHROME)';
+  if (!findChrome()) return 'no Chrome, Chromium or Edge found (set OKPROOF_CHROME)';
   if (typeof globalThis.WebSocket !== 'function') return 'global WebSocket missing (the driver needs Node 22)';
   return false;
 }

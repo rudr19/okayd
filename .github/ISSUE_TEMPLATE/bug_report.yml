@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Okayd doesn't work as documented
+description: Something in okproof doesn't work as documented
 labels: [bug]
 body:
   - type: textarea
@@ -19,6 +19,6 @@ body:
     id: versions
     attributes:
       label: Versions
-      placeholder: "okayd 0.0.1, Playwright 1.50, Node 22"
+      placeholder: "okproof 0.0.1, Playwright 1.50, Node 22"
     validations:
       required: true

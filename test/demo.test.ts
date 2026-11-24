@@ -22,13 +22,13 @@ function runDemo(out: string): Promise<{ status: number | null; stdout: string; 
   });
 }
 
-test('demo: agent says done 5/5, Okayd shows 3 met, 1 failed, 1 untested, and the gate exits 1', { skip, timeout: 180000 }, async () => {
-  const out = await mkdtemp(join(tmpdir(), 'okayd-demo-'));
+test('demo: agent says done 5/5, okproof shows 3 met, 1 failed, 1 untested, and the gate exits 1', { skip, timeout: 180000 }, async () => {
+  const out = await mkdtemp(join(tmpdir(), 'okproof-demo-'));
   try {
     const r = await runDemo(out);
     assert.equal(r.status, 0, r.stdout + r.stderr);
 
-    const ledger = JSON.parse(await readFile(join(out, '.okayd', 'ledger-101.json'), 'utf8')) as Ledger;
+    const ledger = JSON.parse(await readFile(join(out, '.okproof', 'ledger-101.json'), 'utf8')) as Ledger;
     const count = (v: string): number => ledger.entries.filter((e) => e.verdict === v).length;
     assert.equal(ledger.entries.length, 5);
     assert.deepEqual([count('met'), count('failed'), count('untested')], [3, 1, 1]);
@@ -42,7 +42,7 @@ test('demo: agent says done 5/5, Okayd shows 3 met, 1 failed, 1 untested, and th
     const md = await readFile(join(out, 'ledger-101.md'), 'utf8');
     assert.match(md, /Not proven: 3 of 5 criteria met/);
     assert.match(r.stdout, /Agent says: Done \(5\/5\)/);
-    assert.match(r.stdout, /Okayd: 3 met · 1 failed · 1 untested — NOT PROVEN/);
+    assert.match(r.stdout, /okproof: 3 met · 1 failed · 1 untested — NOT PROVEN/);
     assert.match(r.stdout, /Gate: exit 1/);
     assert.ok((await stat(join(out, 'before-reload.png'))).size > 1000);
     assert.ok((await stat(join(out, 'after-reload.png'))).size > 1000);

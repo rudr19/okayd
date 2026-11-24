@@ -1,7 +1,7 @@
-# Why Okayd
+# Why okproof
 
 The agent-testing space is busy. Most projects answer **"how does an agent use a
-browser?"** Okayd answers a different question that nobody owns yet:
+browser?"** okproof answers a different question that nobody owns yet:
 
 > **"Did this pull request do what the issue asked for, and can you prove it?"**
 
@@ -17,12 +17,12 @@ Star counts from the GitHub API, 24 November 2026.
 | **Natural-language / agentic E2E** | Midscene (16K), e2e (14K), Shortest (6K) | Write or run tests in plain language | Treat the spec as a contract; refuse "untested" as a pass |
 | **CI engines and reporting** | act (73K), Dagger (17K), CTRF reporter | Run pipelines, show test results | Say whether the *feature* is done |
 
-All of these are good at what they do. Okayd sits on top of them, not against
+All of these are good at what they do. okproof sits on top of them, not against
 them.
 
-## The gaps Okayd fills
+## The gaps okproof fills
 
-| Gap | What happens today | What Okayd does |
+| Gap | What happens today | What okproof does |
 |---|---|---|
 | **No definition of done** | An agent says "done" when its own tests pass | Acceptance criteria live in a proof file the agent can't quietly weaken |
 | **Green CI ≠ feature works** | CI says tests passed, not which requirement each one proves | Every criterion is met, failed or untested, with evidence |
@@ -32,21 +32,21 @@ them.
 | **No trustworthy record** | Results live in CI logs that expire | Ledgers are files in the repo, signed with GitHub OIDC (planned) |
 | **Lock-in** | Tests live inside a vendor's platform | Plain files, any runner, zero runtime dependencies |
 
-## How Okayd stays one step ahead
+## How okproof stays one step ahead
 
 1. **Own the contract, not the browser.** Browser automation is a crowded,
-   fast-moving commodity. Okayd's center is the proof file and the ledger:
+   fast-moving commodity. okproof's center is the proof file and the ledger:
    a format any tool can produce results for.
 2. **Be the agent's definition of done.** An MCP server lets Claude Code,
-   Cursor and Codex ask Okayd "which criteria are still unmet?" *before* they
-   claim to be finished. The agents those 50K-star tools power become Okayd's
+   Cursor and Codex ask okproof "which criteria are still unmet?" *before* they
+   claim to be finished. The agents those 50K-star tools power become okproof's
    users.
 3. **Feed from everything.** Playwright Test, JUnit XML from any runner, CTRF,
-   and Okayd's own driver all produce the same ledger. Teams adopt Okayd without
+   and okproof's own driver all produce the same ledger. Teams adopt okproof without
    rewriting a single test.
 4. **Independent and deterministic.** The verifier is never the author, and a
    verdict always comes from a real assertion, never a model's opinion.
-5. **Built from scratch, fully owned.** Okayd's chain (spec, ledger, driver,
+5. **Built from scratch, fully owned.** okproof's chain (spec, ledger, driver,
    verifier, replay) has zero runtime dependencies and no dependency on any
    competitor.
 6. **Proof you can verify.** Signed ledgers and npm provenance mean anyone can
@@ -55,7 +55,7 @@ them.
 ## One-line comparison
 
 - Browser agents **act**. Test frameworks **run**. CI **reports**.
-- **Okayd proves**, criterion by criterion, and blocks the merge until it can.
+- **okproof proves**, criterion by criterion, and blocks the merge until it can.
 
 See [VISION.md](VISION.md) for the principles and [ROADMAP.md](ROADMAP.md) for
 what's next.

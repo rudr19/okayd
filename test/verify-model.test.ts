@@ -20,17 +20,17 @@ function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
 }
 
 test('AnthropicModel needs an explicit key and never reads ANTHROPIC_API_KEY', () => {
-  withEnv({ OKAYD_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: 'dummy-not-a-real-key', ANTHROPIC_AUTH_TOKEN: 'dummy-token' }, () => {
-    assert.throws(() => new AnthropicModel(), (e: Error) => e.message === MISSING_KEY_MESSAGE && /OKAYD_ANTHROPIC_API_KEY/.test(e.message));
-    assert.throws(() => new AnthropicModel({ model: 'claude-opus-5-5' }), /OKAYD_ANTHROPIC_API_KEY/);
+  withEnv({ OKPROOF_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: 'dummy-not-a-real-key', ANTHROPIC_AUTH_TOKEN: 'dummy-token' }, () => {
+    assert.throws(() => new AnthropicModel(), (e: Error) => e.message === MISSING_KEY_MESSAGE && /OKPROOF_ANTHROPIC_API_KEY/.test(e.message));
+    assert.throws(() => new AnthropicModel({ model: 'claude-opus-5-5' }), /OKPROOF_ANTHROPIC_API_KEY/);
   });
 });
 
-test('AnthropicModel accepts a key from the option or OKAYD_ANTHROPIC_API_KEY (no SDK is loaded)', () => {
-  withEnv({ OKAYD_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: undefined }, () => {
+test('AnthropicModel accepts a key from the option or OKPROOF_ANTHROPIC_API_KEY (no SDK is loaded)', () => {
+  withEnv({ OKPROOF_ANTHROPIC_API_KEY: undefined, ANTHROPIC_API_KEY: undefined }, () => {
     assert.doesNotThrow(() => new AnthropicModel({ apiKey: 'explicit' }));
   });
-  withEnv({ OKAYD_ANTHROPIC_API_KEY: 'from-env' }, () => {
+  withEnv({ OKPROOF_ANTHROPIC_API_KEY: 'from-env' }, () => {
     assert.doesNotThrow(() => new AnthropicModel());
   });
 });

@@ -27,7 +27,7 @@ if (!existsSync(join(root, 'dist', 'src', 'cli.js'))) {
   process.exit(1);
 }
 
-const work = mkdtempSync(join(tmpdir(), 'okayd-smoke-'));
+const work = mkdtempSync(join(tmpdir(), 'okproof-smoke-'));
 try {
   // 1. npm pack (scripts off: we pack what was built, and avoid recursion).
   const packDir = join(work, 'pack');
@@ -40,7 +40,7 @@ try {
   const info = JSON.parse(pack.stdout)[0];
   ok(`packed ${info.filename} (${info.files.length} files, ${(info.size / 1024).toFixed(1)} kB)`);
   const packed = new Set(info.files.map((f) => f.path));
-  for (const want of ['package.json', 'README.md', 'LICENSE', 'NOTICE', 'TRADEMARK.md', 'dist/src/cli.js', 'skills/okayd/SKILL.md']) {
+  for (const want of ['package.json', 'README.md', 'LICENSE', 'NOTICE', 'TRADEMARK.md', 'dist/src/cli.js', 'skills/okproof/SKILL.md']) {
     if (!packed.has(want)) fail(`tarball is missing ${want}`);
   }
   for (const path of packed) {
@@ -62,9 +62,9 @@ try {
   if (Object.keys(pkg.dependencies ?? {}).length > 0) fail('package has runtime dependencies');
 
   // 3. bin and exports must point at files that exist in the tarball.
-  const cli = join(pkgDir, pkg.bin.okayd);
-  if (!existsSync(cli)) fail(`bin.okayd points at missing ${pkg.bin.okayd}`);
-  if (!readFileSync(cli, 'utf8').startsWith('#!/usr/bin/env node')) fail('bin.okayd has no node shebang');
+  const cli = join(pkgDir, pkg.bin.okproof);
+  if (!existsSync(cli)) fail(`bin.okproof points at missing ${pkg.bin.okproof}`);
+  if (!readFileSync(cli, 'utf8').startsWith('#!/usr/bin/env node')) fail('bin.okproof has no node shebang');
   for (const [subpath, target] of Object.entries(pkg.exports)) {
     for (const [cond, rel] of Object.entries(target)) {
       if (!existsSync(join(pkgDir, rel))) fail(`exports["${subpath}"].${cond} points at missing ${rel}`);
@@ -75,12 +75,12 @@ try {
 
   // 4. Run the packed CLI against a temp fixture. The cwd is the fixture, not the repo.
   const project = join(work, 'project');
-  mkdirSync(join(project, '.okayd'), { recursive: true });
+  mkdirSync(join(project, '.okproof'), { recursive: true });
   writeFileSync(
-    join(project, '.okayd', '1.md'),
+    join(project, '.okproof', '1.md'),
     '## #1 Smoke test\n- [ ] A visitor can sign in\n- [ ] A visitor can sign out\n',
   );
-  const env = { ...process.env, OKAYD_NO_COMMENT: '1' };
+  const env = { ...process.env, OKPROOF_NO_COMMENT: '1' };
   delete env.GITHUB_ACTIONS;
   delete env.GITHUB_STEP_SUMMARY;
   const cliRun = (...args) => run(process.execPath, [cli, ...args], { cwd: project, env });
@@ -90,27 +90,27 @@ try {
     else ok(`${label} -> exit ${code}`);
   };
 
-  expect('okayd check', cliRun('check'), 0, '[okayd:1.1]');
-  expect('okayd gate with no ledger', cliRun('gate'), 1);
-  expect('okayd (unknown command)', cliRun('nonsense'), 2);
+  expect('okproof check', cliRun('check'), 0, '[okproof:1.1]');
+  expect('okproof gate with no ledger', cliRun('gate'), 1);
+  expect('okproof (unknown command)', cliRun('nonsense'), 2);
 
   const junit = (second) => `<?xml version="1.0"?>
 <testsuites><testsuite name="smoke" tests="2">
-  <testcase classname="auth" name="sign in [okayd:1.1]"/>
+  <testcase classname="auth" name="sign in [okproof:1.1]"/>
   ${second}
 </testsuite></testsuites>
 `;
-  writeFileSync(join(project, 'partial.xml'), junit('<testcase classname="auth" name="sign out [okayd:1.2]"><failure message="boom"/></testcase>'));
-  expect('okayd ingest (one failing)', cliRun('ingest', 'partial.xml'), 0);
-  expect('okayd gate with a failed criterion', cliRun('gate'), 1);
+  writeFileSync(join(project, 'partial.xml'), junit('<testcase classname="auth" name="sign out [okproof:1.2]"><failure message="boom"/></testcase>'));
+  expect('okproof ingest (one failing)', cliRun('ingest', 'partial.xml'), 0);
+  expect('okproof gate with a failed criterion', cliRun('gate'), 1);
 
-  writeFileSync(join(project, 'all.xml'), junit('<testcase classname="auth" name="sign out [okayd:1.2]"/>'));
-  expect('okayd ingest (all passing)', cliRun('ingest', 'all.xml'), 0);
-  expect('okayd gate with every criterion met', cliRun('gate'), 0);
+  writeFileSync(join(project, 'all.xml'), junit('<testcase classname="auth" name="sign out [okproof:1.2]"/>'));
+  expect('okproof ingest (all passing)', cliRun('ingest', 'all.xml'), 0);
+  expect('okproof gate with every criterion met', cliRun('gate'), 0);
 
   // A proof file edited after the ledger was written must not pass.
-  writeFileSync(join(project, '.okayd', '1.md'), '## #1 Smoke test\n- [ ] A visitor can sign in\n- [ ] A visitor can sign out\n- [ ] A visitor can reset a password\n');
-  expect('okayd gate with a stale ledger', cliRun('gate'), 1, 'STALE');
+  writeFileSync(join(project, '.okproof', '1.md'), '## #1 Smoke test\n- [ ] A visitor can sign in\n- [ ] A visitor can sign out\n- [ ] A visitor can reset a password\n');
+  expect('okproof gate with a stale ledger', cliRun('gate'), 1, 'STALE');
 
   // 5. import() every export path from the extracted package.
   for (const [subpath, target] of Object.entries(pkg.exports)) {

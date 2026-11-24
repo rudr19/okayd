@@ -31,7 +31,7 @@ export class Cdp {
   static connect(wsUrl: string, timeoutMs = 10000): Promise<Cdp> {
     const WS = (globalThis as { WebSocket?: typeof WebSocket }).WebSocket;
     if (!WS) {
-      return Promise.reject(new CdpError('The Okayd browser driver needs Node 22 or later (global WebSocket is missing).'));
+      return Promise.reject(new CdpError('The okproof browser driver needs Node 22 or later (global WebSocket is missing).'));
     }
     return new Promise((resolve, reject) => {
       const ws = new WS(wsUrl);

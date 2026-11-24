@@ -45,9 +45,9 @@ function candidates(): string[] {
   ];
 }
 
-/** Returns the path to a Chrome/Chromium/Edge binary, or undefined. OKAYD_CHROME wins. */
+/** Returns the path to a Chrome/Chromium/Edge binary, or undefined. OKPROOF_CHROME wins. */
 export function findChrome(): string | undefined {
-  const fromEnv = process.env.OKAYD_CHROME;
+  const fromEnv = process.env.OKPROOF_CHROME;
   if (fromEnv && existsSync(fromEnv)) return fromEnv;
   return candidates().find((p) => existsSync(p));
 }
@@ -55,10 +55,10 @@ export function findChrome(): string | undefined {
 export async function launchChrome(opts: LaunchOptions = {}): Promise<LaunchedChrome> {
   const executablePath = opts.executablePath ?? findChrome();
   if (!executablePath) {
-    throw new Error('No Chrome, Chromium or Edge found. Install one, or set OKAYD_CHROME to its path.');
+    throw new Error('No Chrome, Chromium or Edge found. Install one, or set OKPROOF_CHROME to its path.');
   }
   const timeoutMs = opts.timeoutMs ?? 15000;
-  const profile = mkdtempSync(join(tmpdir(), 'okayd-chrome-'));
+  const profile = mkdtempSync(join(tmpdir(), 'okproof-chrome-'));
   const args = [
     `--user-data-dir=${profile}`,
     '--remote-debugging-port=0',

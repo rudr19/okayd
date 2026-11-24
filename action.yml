@@ -1,4 +1,4 @@
-name: Okayd
+name: okproof
 description: Prove a pull request meets its acceptance criteria, criterion by criterion.
 author: rudr19
 branding:
@@ -7,13 +7,13 @@ branding:
 
 inputs:
   results:
-    description: Path to a JUnit XML file from your test run. Optional if ledgers were already written by the Okayd reporter.
+    description: Path to a JUnit XML file from your test run. Optional if ledgers were already written by the okproof reporter.
     required: false
     default: ''
   dir:
     description: Folder holding the proof files and ledgers.
     required: false
-    default: .okayd
+    default: .okproof
   gate:
     description: Fail the step unless every criterion is proven. "true" or "false".
     required: false
@@ -31,7 +31,7 @@ inputs:
     required: false
     default: check
   node-version:
-    description: Node.js version used to run Okayd.
+    description: Node.js version used to run okproof.
     required: false
     default: '22'
   github-token:
@@ -44,7 +44,7 @@ outputs:
     description: '"true" if every ledger is proven, otherwise "false".'
     value: ${{ steps.outputs.outputs.proven }}
   summary:
-    description: One line per proof file, for example "okayd #142: 4/4 criteria met, proven".
+    description: One line per proof file, for example "okproof #142: 4/4 criteria met, proven".
     value: ${{ steps.outputs.outputs.summary }}
 
 runs:
@@ -54,7 +54,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Install Okayd
+    - name: Install okproof
       shell: bash
       run: |
         cd "$GITHUB_ACTION_PATH"
@@ -105,7 +105,7 @@ runs:
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
-        OKAYD_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
+        OKPROOF_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
       run: |
         if [ -n "$RESULTS" ]; then
           node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR"

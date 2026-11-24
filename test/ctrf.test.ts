@@ -55,16 +55,16 @@ test('throws a clear error when results.tests is missing', () => {
   assert.throws(() => parseCTRF('nope'), /Not valid CTRF JSON/);
 });
 
-test('okayd ingest reads a .json file as CTRF and writes a ledger', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'okayd-ctrf-'));
+test('okproof ingest reads a .json file as CTRF and writes a ledger', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'okproof-ctrf-'));
   await writeFile(join(dir, '900.md'), '## #900 Home\n- [ ] Heading\n- [ ] Skip link\n');
   const file = join(dir, 'ctrf-report.json');
   await writeFile(
     file,
     JSON.stringify(
       report([
-        { name: 'heading [okayd:900.1]', status: 'passed', duration: 100 },
-        { name: 'skip [okayd:900.2]', status: 'passed', duration: 100, flaky: true },
+        { name: 'heading [okproof:900.1]', status: 'passed', duration: 100 },
+        { name: 'skip [okproof:900.2]', status: 'passed', duration: 100, flaky: true },
       ]),
     ),
   );

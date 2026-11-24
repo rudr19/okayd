@@ -1,4 +1,4 @@
-// Wires the protocol to a pair of streams (stdin/stdout for `okayd mcp`).
+// Wires the protocol to a pair of streams (stdin/stdout for `okproof mcp`).
 // stdout carries protocol messages only; everything else goes to stderr.
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -21,7 +21,7 @@ export interface McpServerOptions {
 
 /** Serve MCP until `input` ends. Resolves after every reply is flushed. */
 export function startMcpServer(input: Readable, output: Writable, options: McpServerOptions = {}): Promise<void> {
-  const log = options.log ?? ((m: string) => process.stderr.write(`okayd mcp: ${m}\n`));
+  const log = options.log ?? ((m: string) => process.stderr.write(`okproof mcp: ${m}\n`));
   const protocol = createProtocol({
     cwd: options.cwd,
     version: packageVersion(),

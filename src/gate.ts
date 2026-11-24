@@ -19,7 +19,7 @@ export interface GateResult {
   notes: string[];
 }
 
-const RERUN = 'Re-run your tests (or okayd ingest) to rebuild the ledger.';
+const RERUN = 'Re-run your tests (or okproof ingest) to rebuild the ledger.';
 
 /** Why a ledger no longer describes its proof file, or undefined if it still does. */
 export function staleness(proof: ProofFile, ledger: Ledger): string | undefined {
@@ -54,7 +54,7 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     if (options.allowEmpty) return { ok: true, problems, notes: [`No proof files in ${dir}; nothing to prove (--allow-empty).`] };
     return {
       ok: false,
-      problems: [`No proof files in ${dir}, so there is nothing to prove. Add .okayd/<issue>.md with the acceptance criteria, or pass --allow-empty if this change has none.`],
+      problems: [`No proof files in ${dir}, so there is nothing to prove. Add .okproof/<issue>.md with the acceptance criteria, or pass --allow-empty if this change has none.`],
       notes,
     };
   }
@@ -81,7 +81,7 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
       const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
       problems.push(
         missing
-          ? `#${proof.issue} has no ledger. Run your tests with the Okayd reporter, or run okayd ingest, first.`
+          ? `#${proof.issue} has no ledger. Run your tests with the okproof reporter, or run okproof ingest, first.`
           : `#${proof.issue}: ledger-${proof.issue}.json is not valid JSON. ${RERUN}`,
       );
       continue;

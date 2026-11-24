@@ -9,12 +9,12 @@ import { fileURLToPath } from 'node:url';
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
 async function ingest(extraEnv: Record<string, string>) {
-  const root = await mkdtemp(join(tmpdir(), 'okayd-cli-'));
-  const dir = join(root, '.okayd');
+  const root = await mkdtemp(join(tmpdir(), 'okproof-cli-'));
+  const dir = join(root, '.okproof');
   await mkdir(dir);
   await writeFile(join(dir, '1.md'), '## #1 Demo\n- [ ] Does the thing\n');
   const xml = join(root, 'junit.xml');
-  await writeFile(xml, '<testsuite><testcase name="does it [okayd:1.1]"/></testsuite>');
+  await writeFile(xml, '<testsuite><testcase name="does it [okproof:1.1]"/></testsuite>');
   const summary = join(root, 'summary.md');
   const env: NodeJS.ProcessEnv = { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary, ...extraEnv };
   delete env.GITHUB_TOKEN;
@@ -30,8 +30,8 @@ test('ingest publishes the job summary in GitHub Actions by default', async () =
   assert.match(written, /Does the thing/);
 });
 
-test('OKAYD_NO_COMMENT=1 skips GitHub publishing but still writes the ledger', async () => {
-  const { r, written, ledger } = await ingest({ OKAYD_NO_COMMENT: '1' });
+test('OKPROOF_NO_COMMENT=1 skips GitHub publishing but still writes the ledger', async () => {
+  const { r, written, ledger } = await ingest({ OKPROOF_NO_COMMENT: '1' });
   assert.equal(r.status, 0);
   assert.equal(written, '');
   assert.match(r.stdout, /1\/1 criteria met, proven/);

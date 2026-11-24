@@ -1,8 +1,8 @@
 // Playwright Test reporter. In playwright.config.ts:
 //
-//   reporter: [['list'], ['okayd/playwright', { dir: '.okayd' }]]
+//   reporter: [['list'], ['okproof/playwright', { dir: '.okproof' }]]
 //
-// Typed structurally so Okayd needs no dependency on @playwright/test.
+// Typed structurally so okproof needs no dependency on @playwright/test.
 import { finalize, type FinalizeOptions } from './finalize.js';
 import type { TestOutcome } from './ledger.js';
 
@@ -50,7 +50,7 @@ const STATUS: Record<PwTestResult['status'], string> = {
   interrupted: 'interrupted',
 };
 
-export default class OkaydPlaywrightReporter {
+export default class OkproofPlaywrightReporter {
   private readonly options: FinalizeOptions;
   /** Latest result per test; a pass after a retry is recorded as flaky. */
   private readonly results = new Map<string, TestOutcome>();

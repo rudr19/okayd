@@ -12,7 +12,7 @@ import { replay, type ReplayResult } from './replay.js';
 import type { ReproFile, ResultFinding, VerifyFile, VerifyResult } from './types.js';
 
 export interface VerifyOptions {
-  /** Folder holding proof files. Default ".okayd". */
+  /** Folder holding proof files. Default ".okproof". */
   dir?: string;
   /** Only this issue's proof file. */
   issue?: string;
@@ -141,7 +141,7 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
 }
 
 export async function verify(o: VerifyOptions): Promise<VerifyRun[]> {
-  const dir = o.dir ?? '.okayd';
+  const dir = o.dir ?? '.okproof';
   const runs: VerifyRun[] = [];
   for (const f of await proofFiles(dir, o.issue)) {
     const proof = parseProof(await readFile(join(dir, f), 'utf8'));
@@ -169,7 +169,7 @@ export interface ReplayOnlyResult {
 
 /** Re-runs saved repro scripts with no model. Free, so it is safe in CI. */
 export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: string; chrome?: string }): Promise<ReplayOnlyResult[]> {
-  const dir = o.dir ?? '.okayd';
+  const dir = o.dir ?? '.okproof';
   let names: string[];
   try {
     names = (await readdir(join(dir, 'repro'))).filter((n) => n.endsWith('.json') && (!o.issue || n.startsWith(`${o.issue}.`)));

@@ -4,7 +4,7 @@ import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-const dir = process.env.DIR || '.okayd';
+const dir = process.env.DIR || '.okproof';
 const lines = [];
 let proven = false;
 try {
@@ -14,7 +14,7 @@ try {
     const ledger = JSON.parse(readFileSync(join(dir, f), 'utf8'));
     const met = ledger.entries.filter((e) => e.verdict === 'met').length;
     if (!ledger.proven) proven = false;
-    lines.push(`okayd #${ledger.issue}: ${met}/${ledger.entries.length} criteria met, ${ledger.proven ? 'proven' : 'not proven'}`);
+    lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met, ${ledger.proven ? 'proven' : 'not proven'}`);
   }
 } catch {
   proven = false;
@@ -22,7 +22,7 @@ try {
 const out = process.env.GITHUB_OUTPUT;
 const text = `proven=${proven}\n`;
 if (out) {
-  const delim = `OKAYD_${randomUUID()}`;
+  const delim = `OKPROOF_${randomUUID()}`;
   appendFileSync(out, `${text}summary<<${delim}\n${lines.join('\n')}\n${delim}\n`);
 } else {
   process.stdout.write(`${text}${lines.join('\n')}\n`);
