@@ -9,7 +9,7 @@
 // okproof ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
 // okproof gate   [dir] [--allow-empty]
 //                                 exit 1 unless every proof file has a fresh, fully met ledger
-// okproof lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
+// okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -24,14 +24,16 @@ import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
 let strictAssertions = process.env.OKPROOF_STRICT_ASSERTIONS === '1';
+let strictRelevance = false;
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--strict-assertions') strictAssertions = true;
+  else if (argv[i] === '--strict-relevance') strictRelevance = true;
   else if (argv[i] === '--tests') tests = argv[++i];
   else if (argv[i].startsWith('--tests=')) tests = argv[i].slice('--tests='.length);
   else if (argv[i] === '--format') format = argv[++i];
@@ -251,7 +253,7 @@ async function main(): Promise<number> {
     return result.ok ? 0 : 1;
   }
   if (cmd === 'lint') {
-    const result = await lintTests({ dir: args[1] ?? '.', tests });
+    const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance });
     for (const line of result.lines) console.log(line);
     return result.ok ? 0 : 1;
   }

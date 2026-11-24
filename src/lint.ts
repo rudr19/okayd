@@ -7,6 +7,7 @@
 import { open, readdir } from 'node:fs/promises';
 import { join, resolve, relative, sep } from 'node:path';
 import { parseProof } from './proof.js';
+import { bodyWords, criterionKeywords, missingKeywords, removeTrivial, stripTags, topWords } from './relevance.js';
 
 export interface LintOptions {
   /** Project root: where test files are searched and where ".okproof" lives. Default ".". */
@@ -15,6 +16,8 @@ export interface LintOptions {
   tests?: string;
   /** Folder holding proof files. Default "<dir>/.okproof". */
   proofDir?: string;
+  /** Make "possibly unrelated" findings fail the run (result.ok false). Default false: advisory. */
+  strictRelevance?: boolean;
 }
 
 export interface LintFinding {
@@ -23,10 +26,25 @@ export interface LintFinding {
   ids: string[];
   /** The line holding the tag, trimmed. */
   title: string;
+  /** Why a test is weak: no assertion at all, or only trivial ones such as expect(true).toBe(true). */
+  reason?: 'none' | 'trivial';
+}
+
+export interface RelevanceFinding {
+  file: string;
+  line: number;
+  id: string;
+  /** The test's own title, without the tag. */
+  test: string;
+  criterion: string;
+  /** Key words of the criterion the test body never mentions. */
+  missing: string[];
 }
 
 export interface LintResult {
   weak: LintFinding[];
+  /** Tagged tests whose body shares no key word with the criterion they claim. Advisory unless strictRelevance. */
+  unrelated: RelevanceFinding[];
   /** Tags naming a criterion that no proof file lists. One finding per tag. */
   dangling: LintFinding[];
   /** Criterion ids no tagged test claims. */
@@ -34,7 +52,7 @@ export interface LintResult {
   filesScanned: number;
   notes: string[];
   lines: string[];
-  /** True when there is no weak test and no dangling tag. */
+  /** True when there is no weak test and no dangling tag (and, with strictRelevance, no unrelated test). */
   ok: boolean;
 }
 
@@ -45,6 +63,8 @@ const MAX_TAGS_PER_FILE = 5000;
 /** A test body is scanned for at most this many characters. */
 const MAX_BODY_CHARS = 50_000;
 const PREFIX_WINDOW = 300;
+const MAX_LITS = 2000;
+const MAX_LIT_CHARS = 2000;
 const MAX_PY_BLOCK_LINES = 2000;
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
@@ -65,6 +85,8 @@ const REGEX_PREV = '(,=:[!&|?{};';
 interface Scan {
   /** The scanned text with strings, comments and regex literals blanked. */
   code: string;
+  /** Contents of the string and template literals met on the way (capped). */
+  lits: string[];
   /** Absolute index where the scan stopped. */
   end: number;
 }
@@ -79,6 +101,10 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
   const n = src.length;
   const limit = Math.min(n, from + MAX_BODY_CHARS);
   const parts: string[] = [];
+  const lits: string[] = [];
+  const lit = (a: number, b: number): void => {
+    if (lits.length < MAX_LITS) lits.push(src.slice(a, Math.min(b, a + MAX_LIT_CHARS)));
+  };
   let codeStart = from;
   let depth = 0;
   let floor: number | undefined;
@@ -126,11 +152,13 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
     } else if (c === '"' || c === "'") {
       let j = i + 1;
       while (j < n && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
+      lit(i + 1, Math.min(j, n));
       blank(Math.min(n, src[j] === '\n' ? j : j + 1));
       last = 'a';
     } else if (c === '`') {
       let j = i + 1;
       while (j < n && src[j] !== '`') j += src[j] === '\\' ? 2 : 1;
+      lit(i + 1, Math.min(j, n));
       blank(Math.min(n, j + 1));
       last = 'a';
     } else {
@@ -148,11 +176,14 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
   }
   const end = Math.min(i, n);
   parts.push(src.slice(codeStart, end));
-  return { code: parts.join(''), end };
+  return { code: parts.join(''), lits, end };
 }
 
 /** Blank Python strings (including triple-quoted) and # comments. */
-export function stripPython(src: string): string {
+export function stripPython(src: string, lits?: string[]): string {
+  const lit = (a: number, b: number): void => {
+    if (lits && lits.length < MAX_LITS) lits.push(src.slice(a, Math.min(b, a + MAX_LIT_CHARS)));
+  };
   const n = src.length;
   const parts: string[] = [];
   let codeStart = 0;
@@ -170,10 +201,12 @@ export function stripPython(src: string): string {
     } else if (c === '"' || c === "'") {
       if (src[i + 1] === c && src[i + 2] === c) {
         const close = src.indexOf(c.repeat(3), i + 3);
+        lit(i + 3, close === -1 ? n : close);
         blank(close === -1 ? n : close + 3);
       } else {
         let j = i + 1;
         while (j < n && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
+        lit(i + 1, Math.min(j, n));
         blank(Math.min(n, src[j] === '\n' ? j : j + 1));
       }
     } else i++;
@@ -197,6 +230,11 @@ interface FoundTest {
   title: string;
   ids: string[];
   weak: boolean;
+  trivial: boolean;
+  /** The test's title or function name, without the tag. */
+  name: string;
+  /** Words (and stems) of the body, for the relevance check. */
+  words: Set<string>;
 }
 interface FileFindings {
   tests: FoundTest[];
@@ -258,7 +296,16 @@ export function analyzeSource(src: string, python: boolean): FileFindings {
         if (!existing.ids.includes(id)) existing.ids.push(id);
         continue;
       }
-      const t: FoundTest = { line, title: lineText(src, idx), ids: [id], weak: !ASSERTION.test(stripPython(pythonBlock(pyLines, defIdx))) };
+      const lits: string[] = [];
+      const code = stripPython(pythonBlock(pyLines, defIdx), lits);
+      const t: FoundTest = {
+        line,
+        title: lineText(src, idx),
+        ids: [id],
+        ...judge(code),
+        name: pyName(pyLines[defIdx]!),
+        words: bodyWords(code, lits.filter((l) => !l.includes('[okproof:'))),
+      };
       pyTestAtDef.set(defIdx, t);
       out.tests.push(t);
       continue;
@@ -273,10 +320,37 @@ export function analyzeSource(src: string, python: boolean): FileFindings {
     const from = idx - window.length + (nlInWindow === -1 ? 0 : nlInWindow + 1);
     const scan = scanBraces(src, from, idx);
     lastEnd = scan.end;
-    lastTest = { line, title: lineText(src, idx), ids: [id], weak: !ASSERTION.test(scan.code) };
+    const own = scan.lits.find((l) => l.includes('[okproof:'));
+    lastTest = {
+      line,
+      title: lineText(src, idx),
+      ids: [id],
+      ...judge(scan.code),
+      name: own === undefined ? '' : stripTags(own),
+      words: bodyWords(scan.code, scan.lits.filter((l) => !l.includes('[okproof:'))),
+    };
+    if (lastTest.name === '') lastTest.name = stripTags(lastTest.title);
     out.tests.push(lastTest);
   }
   return out;
+}
+
+/** Weak when nothing asserts, or when every assertion is trivial (expect(true).toBe(true)). */
+function judge(code: string): { weak: boolean; trivial: boolean } {
+  if (!ASSERTION.test(code)) return { weak: true, trivial: false };
+  const rest = removeTrivial(code);
+  if (rest !== code && !ASSERTION.test(rest)) return { weak: true, trivial: true };
+  return { weak: false, trivial: false };
+}
+
+function pyName(defLine: string): string {
+  const at = defLine.indexOf('def ');
+  if (at === -1) return defLine.trim();
+  let j = at + 4;
+  while (defLine[j] === ' ') j++;
+  let k = j;
+  while (k < defLine.length && defLine[k] !== '(' && defLine[k] !== ':' && defLine[k] !== ' ') k++;
+  return defLine.slice(j, k);
 }
 
 /** Index of the `def` line a tag on line `at` belongs to, if any. */
@@ -438,7 +512,11 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     if (w.truncated) notes.push(`scan stopped early: more than ${MAX_FILES} test files or ${MAX_ENTRIES} entries`);
   }
 
+  const criteria = await loadCriteria(options.proofDir ? resolve(root, options.proofDir) : join(root, '.okproof'));
+  const textOf = new Map<string, string>();
+  for (const c of criteria ?? []) if (!textOf.has(c.id)) textOf.set(c.id, c.text);
   const weak: LintFinding[] = [];
+  const unrelated: RelevanceFinding[] = [];
   const dangling: LintFinding[] = [];
   const seenIds = new Set<string>();
   const pending: { file: string; tags: FileFindings['tags'] }[] = [];
@@ -457,12 +535,24 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     }
     scanned++;
     const found = analyzeSource(src, f.endsWith('.py'));
-    for (const t of found.tests) if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title });
+    for (const t of found.tests) {
+      if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title, reason: t.trivial ? 'trivial' : 'none' });
+      // A test with no assertions is already reported weak; relevance is about the rest.
+      if (t.weak && !t.trivial) continue;
+      for (const id of t.ids) {
+        const text = textOf.get(id);
+        if (text === undefined) continue;
+        const keys = criterionKeywords(text);
+        if (keys.length === 0) continue; // nothing to compare: all stopwords
+        if (missingKeywords(keys, t.words).length === keys.length) {
+          unrelated.push({ file: rel, line: t.line, id, test: t.name, criterion: text, missing: topWords(keys) });
+        }
+      }
+    }
     for (const t of found.tags) seenIds.add(t.id);
     pending.push({ file: rel, tags: found.tags });
   }
 
-  const criteria = await loadCriteria(options.proofDir ? resolve(root, options.proofDir) : join(root, '.okproof'));
   const untested: LintResult['untested'] = [];
   if (!criteria || criteria.length === 0) {
     notes.push('no proof files found: skipped the dangling-tag and untested-criterion checks');
@@ -475,13 +565,21 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
   }
 
   const lines: string[] = [];
-  for (const w of weak) lines.push(`WEAK      ${w.file}:${w.line}  [okproof:${w.ids.join(', ')}] no assertion in test body: ${w.title}`);
+  for (const w of weak) {
+    const why = w.reason === 'trivial' ? 'only trivial assertions (such as expect(true).toBe(true)) in test body' : 'no assertion in test body';
+    lines.push(`WEAK      ${w.file}:${w.line}  [okproof:${w.ids.join(', ')}] ${why}: ${w.title}`);
+  }
+  for (const u of unrelated) {
+    const text = u.criterion.length > 100 ? `${u.criterion.slice(0, 97)}...` : u.criterion;
+    lines.push(`UNRELATED ${u.file}:${u.line}  possibly unrelated: test '${u.test}' claims ${u.id} ('${text}') but never mentions ${u.missing.join(', ')}`);
+  }
   for (const d of dangling) lines.push(`DANGLING  ${d.file}:${d.line}  [okproof:${d.ids[0]}] no such criterion in any proof file`);
   for (const u of untested) lines.push(`UNTESTED  ${u.id}  ${u.text}: no tagged test`);
   for (const n of notes) lines.push(`note: ${n}`);
-  const ok = weak.length === 0 && dangling.length === 0;
+  const strictRelevance = options.strictRelevance === true;
+  const ok = weak.length === 0 && dangling.length === 0 && (!strictRelevance || unrelated.length === 0);
   lines.push(
-    `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
+    `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${unrelated.length} possibly unrelated${strictRelevance ? '' : ' (advisory)'}, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
   );
-  return { weak, dangling, untested, filesScanned: scanned, notes, lines, ok };
+  return { weak, unrelated, dangling, untested, filesScanned: scanned, notes, lines, ok };
 }

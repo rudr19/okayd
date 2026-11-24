@@ -6,6 +6,11 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- JUnit: a passing `<testcase>` with `<flakyFailure>`, `<flakyError>`, `<rerunFailure>`, `<rerunError>` or a non-zero `rerun` property is `flaky`, never met.
+- `okproof lint` flags tagged tests whose only assertions are trivial (`expect(true).toBe(true)`, `assert True`, ...) as weak.
+- `okproof lint` warns when a tagged test never mentions any key word of its criterion ("possibly unrelated"). Advisory; `--strict-relevance` makes it fail. Also in `lintTests()` and the `okproof_lint` MCP tool.
+
 ## [0.1.0] - 2026-11-24
 
 First release. okproof checks a pull request against the acceptance criteria in

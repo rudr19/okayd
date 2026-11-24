@@ -114,7 +114,7 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okproof gate` exits 1 unless every criterion is met. Make it a required
 check.
 
-## Weak tests
+## Weak and unrelated tests
 
 A tag is a claim; an assertion is evidence. A tagged test that passes but makes
 zero assertions proves nothing, so okproof will not call its criterion met.
@@ -135,7 +135,7 @@ or `strictAssertions: true` to the reporter, to treat unknown as weak.
 How each runner reports counts:
 
 - **Playwright reporter**: counts `expect` steps in the result's step tree, nested ones and `expect.soft` included. A result with no step list is unknown.
-- **JUnit**: the `assertions="N"` attribute on `<testcase>` (PHPUnit style). Absent means unknown.
+- **JUnit**: the `assertions="N"` attribute on `<testcase>` (PHPUnit style). Absent means unknown. A testcase that passed only after a retry is `flaky`, so never met: `<flakyFailure>`/`<flakyError>` (Maven Surefire), `<rerunFailure>`/`<rerunError>`, or a `rerun`/`reruns`/`rerun_count` property that is not `0`.
 - **CTRF**: `extra.assertions` on a test, when it is a number. Otherwise unknown.
 
 A confirmed verifier refutation still makes a criterion `failed`.
@@ -151,7 +151,11 @@ npx okproof lint --tests e2e           # limit to a path, file or glob such as "
 
 It finds tests whose title has `[okproof:<id>]` and reports the ones with no
 assertion in the body (`expect(`, `assert`, `.should(`, `t.Error`, `t.Fatal`,
-`require.`, `toBe`, `toEqual`, `toHave`, ...). It also reports tags naming a
+`require.`, `toBe`, `toEqual`, `toHave`, ...), or whose only assertions are
+trivial: `expect(true).toBe(true)`, `expect(1).toBe(1)`, `expect(true).toBeTruthy()`,
+`assert.ok(true)`, `assert.equal(1, 1)`, `assert True`, `assert 1 == 1`,
+`self.assertTrue(True)` and the like. One real assertion next to a trivial one
+is enough to pass this check. It also reports tags naming a
 criterion that no proof file lists, and criteria no tagged test claims. It
 exits 1 on a weak test or a dangling tag. Untested criteria are listed but do
 not fail the run. Also available as `lintTests()` and the `okproof_lint` MCP tool.
@@ -164,6 +168,41 @@ reads the indented block (Python). Put the tag in the test title. A test
 that only calls a helper which asserts is reported weak, and a tag in a comment
 above a test is not followed. Treat a hit as a prompt to look, not a verdict.
 The ledger counts from your runner are the authority.
+
+#### Possibly unrelated tests
+
+A tag is a claim, and an agent optimising for a green gate can tag a test that
+checks something else. For every tagged test that does assert, lint compares the
+claimed criterion with the test body and reports:
+
+```
+possibly unrelated: test 'login works' claims 5.1 ('A user can reset their password by email') but never mentions password, email, reset
+```
+
+This is advisory: it prints warnings and exits 0. Add `--strict-relevance`
+(`strictRelevance: true` for `lintTests()` and the MCP tool) to make each one a
+failure (exit 1).
+
+How it works: the criterion is lowercased and split on non-letters, a small
+built-in stopword list and words shorter than 3 characters are dropped (so are
+"user"/"users", which start nearly every criterion), and simple stems are
+compared (`s`, `es`, `ed`, `ing`). The test body contributes its identifiers,
+split on camelCase and snake_case, and its string literals. The test's own title
+and (in Python) function name do not count, because they are the easiest thing to
+copy from the criterion. If **none** of the criterion's key words appear in the
+body, the test is reported. One shared word is enough to stay quiet.
+
+Known limits, so you can weigh a hit:
+
+- **Synonyms are out of scope.** A test that calls `changePass()` for "reset the password" is reported (false positive).
+- **Compound words** such as `signup` against "sign up" do not match.
+- **Helpers hide intent.** A test that only calls `runScenario()` mentions nothing; the words live in the helper.
+- **Page objects and fixtures** (`loginPage.submit()`) can carry the meaning outside the test body.
+- **False negatives are easy.** A test can mention the right words and still check nothing relevant; one shared word passes, and a common word in the criterion (such as "list") matches almost anything.
+- It checks wording, not behaviour. It cannot tell that a test is wrong, only that it never talks about the thing it claims.
+- Code identifiers such as `expect`, `test`, `page` and `assert` are ignored as body words, but the same words in a string literal count.
+
+Treat it as a prompt to open the test, not a verdict.
 
 ## Keep criteria in sync with the issue
 
@@ -328,7 +367,7 @@ working directory):
 - `okproof_criteria` lists criteria and the `[okproof:<issue>.<n>]` tag for each test title.
 - `okproof_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
 - `okproof_ingest_junit` builds ledgers from a JUnit XML report.
-- `okproof_lint` finds tagged tests with no assertion, dangling tags and untested criteria. `okproof_status` reports criteria whose tests passed without asserting as unproven and names the tests.
+- `okproof_lint` finds tagged tests with no assertion or only trivial ones, tests that never mention their criterion ("possibly unrelated", advisory; `strictRelevance` makes it fail), dangling tags and untested criteria. `okproof_status` reports criteria whose tests passed without asserting as unproven and names the tests.
 - `okproof_add_criterion` appends a criterion. Agents can add criteria but not remove or edit them.
 
 `skills/okproof/SKILL.md` is a Claude Code skill that tells agents to follow this
