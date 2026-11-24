@@ -303,7 +303,7 @@ criterion. Unnamed controls and overflow are severity 2: reported, not failing.
 `new AnthropicModel({ apiKey })` or `OKPROOF_ANTHROPIC_API_KEY`. It never falls
 back to `ANTHROPIC_API_KEY`, auth tokens or CLI profiles, so you choose which
 account pays. Without a key, `okproof verify` exits 2. `@anthropic-ai/sdk` is an
-optional peer dependency, loaded only when used: `npm i @anthropic-ai/sdk`. The
+optional peer dependency (`>=1.0.0 <2.0.0`), loaded only when used: `npm i @anthropic-ai/sdk`. The
 core stays dependency free, and any `ModelClient` works:
 
 ```ts

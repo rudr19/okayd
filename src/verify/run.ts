@@ -7,12 +7,13 @@ import { parseProof, type Criterion } from '../proof.js';
 import { Browser } from '../driver/index.js';
 import { verifyCriterion, type AgentResult } from './agent.js';
 import { attributeFinding } from './attribution.js';
+import { prepareAuth, type AuthOptions, type PreparedAuth } from './auth.js';
 import { findingKey, REFUTE_SEVERITY } from './detectors.js';
 import type { ModelClient } from './model.js';
 import { replay, type ReplayResult } from './replay.js';
 import type { ReproFile, ResultFinding, VerifyFile, VerifyResult } from './types.js';
 
-export interface VerifyOptions {
+export interface VerifyOptions extends AuthOptions {
   /** Folder holding proof files. Default ".okproof". */
   dir?: string;
   /** Only this issue's proof file. */
@@ -26,6 +27,8 @@ export interface VerifyOptions {
   checkLinks?: boolean;
   /** Count every detector finding against the criterion, wherever it came from (the 0.1.0 behaviour). */
   strictDetectors?: boolean;
+  /** Set by verify() so every criterion shares one validated auth setup. */
+  prepared?: PreparedAuth;
   /** Progress lines. */
   log?: (line: string) => void;
 }
@@ -45,12 +48,13 @@ async function proofFiles(dir: string, issue?: string): Promise<string[]> {
 /** Replays actions in a fresh browser, so cookies and storage from the agent run cannot leak in. */
 async function freshReplay(
   actions: ReproFile['actions'],
-  o: { baseUrl: string; chrome?: string; checkLinks?: boolean; screenshotDir?: string; screenshotPrefix?: string },
+  o: { baseUrl: string; chrome?: string; checkLinks?: boolean; screenshotDir?: string; screenshotPrefix?: string; auth?: PreparedAuth },
 ): Promise<{ result: ReplayResult; screenshots: string[] }> {
   const browser = await Browser.launch({ executablePath: o.chrome });
   const screenshots: string[] = [];
   try {
     const page = await browser.newPage();
+    await o.auth?.apply(page, o.baseUrl);
     const result = await replay(actions, page, {
       baseUrl: o.baseUrl,
       checkLinks: o.checkLinks,
@@ -69,10 +73,12 @@ async function freshReplay(
 }
 
 export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: string }): Promise<VerifyResult> {
+  const auth = o.prepared ?? (await prepareAuth(o));
   const browser = await Browser.launch({ executablePath: o.chrome });
   let agent: AgentResult;
   try {
     const page = await browser.newPage();
+    await auth.apply(page, o.baseUrl);
     agent = await verifyCriterion({
       page,
       model: o.model,
@@ -95,6 +101,7 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
       baseUrl: o.baseUrl,
       chrome: o.chrome,
       checkLinks: o.checkLinks,
+      auth,
       screenshotDir: join(o.dir, 'screenshots'),
       screenshotPrefix: criterion.id,
     });
@@ -147,12 +154,13 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
 export async function verify(o: VerifyOptions): Promise<VerifyRun[]> {
   const dir = o.dir ?? '.okproof';
   const runs: VerifyRun[] = [];
+  const prepared = await prepareAuth(o);
   for (const f of await proofFiles(dir, o.issue)) {
     const proof = parseProof(await readFile(join(dir, f), 'utf8'));
     const results: VerifyResult[] = [];
     for (const c of proof.criteria) {
       o.log?.(`verifying ${c.id} ${c.text}`);
-      const r = await verifyOne(c, { ...o, dir });
+      const r = await verifyOne(c, { ...o, dir, prepared });
       o.log?.(`  ${r.verdict}${r.findings.length ? ` (${r.findings.filter((x) => x.confirmed).length} confirmed, ${r.findings.filter((x) => !x.confirmed).length} unconfirmed)` : ''}`);
       results.push(r);
     }
@@ -172,8 +180,9 @@ export interface ReplayOnlyResult {
 }
 
 /** Re-runs saved repro scripts with no model. Free, so it is safe in CI. */
-export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: string; chrome?: string }): Promise<ReplayOnlyResult[]> {
+export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: string; chrome?: string } & AuthOptions): Promise<ReplayOnlyResult[]> {
   const dir = o.dir ?? '.okproof';
+  const auth = await prepareAuth(o);
   let names: string[];
   try {
     names = (await readdir(join(dir, 'repro'))).filter((n) => n.endsWith('.json') && (!o.issue || n.startsWith(`${o.issue}.`)));
@@ -183,7 +192,7 @@ export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: st
   const out: ReplayOnlyResult[] = [];
   for (const name of names) {
     const repro = JSON.parse(await readFile(join(dir, 'repro', name), 'utf8')) as ReproFile;
-    const { result } = await freshReplay(repro.actions, { baseUrl: o.baseUrl ?? repro.baseUrl, chrome: o.chrome, checkLinks: repro.checkLinks });
+    const { result } = await freshReplay(repro.actions, { baseUrl: o.baseUrl ?? repro.baseUrl, chrome: o.chrome, checkLinks: repro.checkLinks, auth });
     const lines: string[] = [];
     let reproduced = false;
     for (const v of repro.violations) {

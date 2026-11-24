@@ -21,6 +21,7 @@ import { parseResults, runGate, sha256Hex } from './trust.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 
@@ -52,14 +53,35 @@ function flags(argv: string[]): Map<string, string | true> {
   return out;
 }
 
+/** --storage-state, --login and every --header 'Name: value'. Throws a message that never repeats a secret. */
+function authFlags(list: string[], str: (k: string) => string | undefined): AuthOptions {
+  const headers: Record<string, string> = {};
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!;
+    const raw = a === '--header' ? list[++i] : a.startsWith('--header=') ? a.slice('--header='.length) : undefined;
+    if (a !== '--header' && !a.startsWith('--header=')) continue;
+    const [name, value] = parseHeader(raw ?? '');
+    headers[name] = value;
+  }
+  return { storageState: str('storage-state'), login: str('login'), ...(Object.keys(headers).length > 0 ? { headers } : {}) };
+}
+
 async function runVerify(): Promise<number> {
   const f = flags(args.slice(1));
   const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  let auth: AuthOptions;
+  try {
+    auth = authFlags(args.slice(1), str);
+    await prepareAuth(auth); // fail on a bad file or login script before anything else
+  } catch (e) {
+    console.error((e as Error).message);
+    return 2;
+  }
   const dir = str('dir') ?? '.okproof';
   const issue = str('issue');
   const url = str('url');
   if (f.get('replay-only') === true) {
-    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME });
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, ...auth });
     if (results.length === 0) {
       console.error(`No repro files in ${dir}/repro. Run okproof verify first.`);
       return 2;
@@ -84,7 +106,7 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {

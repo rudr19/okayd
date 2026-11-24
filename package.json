@@ -68,7 +68,7 @@
     "pull-request"
   ],
   "peerDependencies": {
-    "@anthropic-ai/sdk": "*"
+    "@anthropic-ai/sdk": ">=1.0.0 <2.0.0"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/sdk": {
