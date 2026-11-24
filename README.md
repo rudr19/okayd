@@ -14,6 +14,26 @@ Okayd doesn't run your tests. It works with **Playwright Test** directly, and
 with **any runner that writes JUnit XML**: Jest, Vitest, pytest, JUnit,
 Cypress, Go and more. It has no runtime dependencies.
 
+## See it in action
+
+An agent says "All 5 acceptance criteria are implemented and tested. Done."
+Okayd checks the claim against the criteria in the issue:
+
+```text
+  Agent says: Done (5/5)
+  Okayd: 3 met · 1 failed · 1 untested — NOT PROVEN
+```
+
+Three criteria pass in a real browser. One fails, and a verifier refutation is
+confirmed by replaying it with no model. One has no test at all. The gate exits
+1. Run it yourself with `npm run demo` (no API key needed), or read
+[the demo](examples/demo/README.md) and its
+[ledger](examples/demo/out/ledger-101.md).
+
+| Before reload | After reload |
+| --- | --- |
+| ![Team notes with one note in the list](examples/demo/out/before-reload.png) | ![Team notes with an empty list after reload](examples/demo/out/after-reload.png) |
+
 ## 1. Write a proof file
 
 `.okayd/142.md`:

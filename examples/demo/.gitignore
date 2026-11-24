@@ -1,0 +1,5 @@
+# Everything `npm run demo` writes, except the three files the READMEs show.
+out/*
+!out/ledger-101.md
+!out/before-reload.png
+!out/after-reload.png
