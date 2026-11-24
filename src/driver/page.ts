@@ -111,6 +111,36 @@ export class Page {
     this.refs = new Map();
   }
 
+  async reload(opts: { timeoutMs?: number } = {}): Promise<void> {
+    const loaded = this.cdp.waitFor('Page.loadEventFired', this.sessionId, opts.timeoutMs ?? 30000);
+    loaded.catch(() => { /* handled below */ });
+    await this.send('Page.reload');
+    await loaded;
+    this.refs = new Map();
+  }
+
+  /** Goes back one history entry. Returns false when there is nothing to go back to. */
+  async back(): Promise<boolean> {
+    const h = await this.send<{ currentIndex: number; entries: { id: number }[] }>('Page.getNavigationHistory');
+    const prev = h.entries[h.currentIndex - 1];
+    if (!prev) return false;
+    // A page restored from the back/forward cache fires no load event, so do not insist on one.
+    const loaded = this.cdp.waitFor('Page.loadEventFired', this.sessionId, 3000);
+    loaded.catch(() => { /* bfcache restore */ });
+    await this.send('Page.navigateToHistoryEntry', { entryId: prev.id });
+    await loaded.catch(() => undefined);
+    this.refs = new Map();
+    return true;
+  }
+
+  async setViewport(width: number, height: number): Promise<void> {
+    await this.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  }
+
+  async setOffline(offline: boolean): Promise<void> {
+    await this.send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  }
+
   async snapshot(): Promise<Snapshot> {
     await this.send('Accessibility.enable');
     const { nodes } = await this.send<{ nodes: any[] }>('Accessibility.getFullAXTree');

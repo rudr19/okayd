@@ -9,9 +9,11 @@ import { parseProof } from './proof.js';
 import { parseJUnit } from './junit.js';
 import { parseCTRF } from './ctrf.js';
 import { finalize } from './finalize.js';
+import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
+import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd mcp';
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 const args: string[] = [];
@@ -19,6 +21,63 @@ for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--format') format = argv[++i];
   else if (argv[i].startsWith('--format=')) format = argv[i].slice('--format='.length);
   else args.push(argv[i]);
+}
+
+// okayd verify --url <baseUrl> [--issue N] [--dir .okayd] [--max-steps 15] [--model id] [--effort e] [--replay-only]
+function flags(argv: string[]): Map<string, string | true> {
+  const out = new Map<string, string | true>();
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (!a.startsWith('--')) continue;
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) out.set(a.slice(2), true);
+    else { out.set(a.slice(2), next); i++; }
+  }
+  return out;
+}
+
+async function runVerify(): Promise<number> {
+  const f = flags(args.slice(1));
+  const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  const dir = str('dir') ?? '.okayd';
+  const issue = str('issue');
+  const url = str('url');
+  if (f.get('replay-only') === true) {
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKAYD_CHROME });
+    if (results.length === 0) {
+      console.error(`No repro files in ${dir}/repro. Run okayd verify first.`);
+      return 2;
+    }
+    let reproduced = false;
+    for (const r of results) {
+      console.log(`${r.criterionId}: ${r.reproduced ? 'BUG REPRODUCED' : 'not reproduced'}`);
+      for (const l of r.lines) console.log(`  ${l}`);
+      reproduced ||= r.reproduced;
+    }
+    return reproduced ? 1 : 0;
+  }
+  if (!url) {
+    console.error(`Name the app to test with --url <baseUrl>. ${USAGE}`);
+    return 2;
+  }
+  let model: AnthropicModel;
+  try {
+    model = new AnthropicModel({ model: str('model'), effort: str('effort') as Effort | undefined });
+  } catch (e) {
+    const message = (e as Error).message;
+    console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
+    return 2;
+  }
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), log: (l) => console.log(l) });
+  let refuted = false;
+  for (const run of runs) {
+    for (const r of run.results) {
+      console.log(`${r.criterionId}: ${r.verdict}${r.repro ? ` (repro: ${r.repro})` : ''}`);
+      for (const x of r.findings) console.log(`  ${x.confirmed ? 'confirmed' : 'unconfirmed'} [${x.severity}] ${x.title}`);
+      refuted ||= r.verdict === 'refuted';
+    }
+  }
+  return refuted ? 1 : 0;
 }
 const cmd = args[0] ?? 'check';
 
@@ -74,6 +133,7 @@ async function main(): Promise<number> {
     await startMcpServer(process.stdin, process.stdout);
     return 0;
   }
+  if (cmd === 'verify') return runVerify();
   console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
 }

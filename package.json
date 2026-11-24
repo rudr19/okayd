@@ -39,6 +39,10 @@
     "./playwright": {
       "types": "./dist/src/playwright.d.ts",
       "default": "./dist/src/playwright.js"
+    },
+    "./verify": {
+      "types": "./dist/src/verify/index.d.ts",
+      "default": "./dist/src/verify/index.js"
     }
   },
   "keywords": [
@@ -48,5 +52,13 @@
     "junit",
     "ai-agents",
     "pull-request"
-  ]
+  ],
+  "peerDependencies": {
+    "@anthropic-ai/sdk": "*"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/sdk": {
+      "optional": true
+    }
+  }
 }

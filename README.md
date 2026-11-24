@@ -142,6 +142,65 @@ try {
 Set `OKAYD_CHROME` to use a specific Chrome, Chromium or Edge binary. Refs are
 only valid until the next snapshot.
 
+## Verifier
+
+`okayd verify` points an adversarial QA agent at your running app (a preview
+deployment, say) and tells it to prove each criterion **false**. It tries other
+roles, bad and huge input, double submit, reload mid-flow, back, keyboard-only,
+a 375px viewport and offline. It acts only through the driver above.
+
+Models guess, so a claim is never trusted on its own. Every action is recorded
+as plain JSON. A violation counts only if its assertion **fails again when the
+recorded actions are replayed with no model**, in a fresh browser. Otherwise it
+is listed as unconfirmed and does not fail the criterion.
+
+```bash
+export OKAYD_ANTHROPIC_API_KEY=...        # explicit key, see below
+npx okayd verify --url https://preview.example.com --issue 142
+```
+
+Options: `--dir .okayd`, `--max-steps 15`, `--model claude-opus-5-5`,
+`--effort medium`. It writes:
+
+- `.okayd/verify-<issue>.json`: a verdict per criterion (`refuted`, `held` or
+  `inconclusive`), findings, and the recorded actions
+- `.okayd/repro/<criterion>.json`: a model-free regression script
+- `.okayd/screenshots/`: a screenshot of each confirmed failure
+
+`okayd ingest` then reads `verify-<issue>.json`: a criterion with a confirmed
+refutation becomes **failed** with the evidence `refuted by verifier: <title>
+(repro: .okayd/repro/<id>.json)`, whatever the tests said.
+
+**Replay for free.** `okayd verify --replay-only [--url ...]` re-runs the saved
+repro scripts with no model and no key. It exits 1 while a bug still
+reproduces, so a fixed bug becomes a free regression check in CI.
+
+**Deterministic detectors** run after every action, with no model: console
+errors, uncaught exceptions, failed requests and HTTP 4xx/5xx, interactive
+elements with no accessible name, horizontal overflow, and (opt in, same
+origin, at most 20 links) broken links. They are confirmed the same way, by
+reappearing on replay. A confirmed finding of severity 3 or more refutes the
+criterion. Unnamed controls and overflow are severity 2: reported, not failing.
+
+**Which account pays.** The Anthropic adapter needs an explicit key, either
+`new AnthropicModel({ apiKey })` or `OKAYD_ANTHROPIC_API_KEY`. It never falls
+back to `ANTHROPIC_API_KEY`, auth tokens or CLI profiles, so you choose which
+account pays. Without a key, `okayd verify` exits 2. `@anthropic-ai/sdk` is an
+optional peer dependency, loaded only when used: `npm i @anthropic-ai/sdk`. The
+core stays dependency free, and any `ModelClient` works:
+
+```ts
+import { verify, AnthropicModel } from 'okayd/verify';
+await verify({ baseUrl, model: new AnthropicModel({ apiKey }), dir: '.okayd' });
+```
+
+Status: the replay, detectors, agent loop and ledger integration are tested
+against a scripted fake model. The Anthropic adapter is **not yet tested
+against the live API**; its request and response shapes follow the SDK docs
+and are checked against a fake client only. Known limits: broken-link checks
+send no cookies; the key set is Enter, Tab, Escape, Backspace and arrows; one
+tab, no file uploads or dialogs.
+
 ## Use with coding agents
 
 `okayd mcp` runs an MCP server over stdio (no dependencies) so Claude Code,
@@ -171,7 +230,7 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 - [x] Own Chrome driver (DevTools Protocol, no dependencies)
 - [x] MCP server so coding agents check "done" through Okayd
 - [x] CTRF ingest
-- [ ] Verifier agent that attacks each criterion on the preview deployment
+- [x] Verifier agent that attacks each criterion on the preview deployment
 - [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
 
