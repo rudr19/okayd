@@ -2,14 +2,16 @@
 // okayd check  [dir]              validate proof files and print each criterion's tag
 // okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
 // okayd gate   [dir]              exit 1 unless every written ledger is proven
+// okayd mcp                       serve Okayd to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof } from './proof.js';
 import { parseJUnit } from './junit.js';
 import { parseCTRF } from './ctrf.js';
 import { finalize } from './finalize.js';
+import { startMcpServer } from './mcp/server.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir]';
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd mcp';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 const args: string[] = [];
@@ -63,6 +65,10 @@ async function main(): Promise<number> {
       }
     }
     return ok ? 0 : 1;
+  }
+  if (cmd === 'mcp') {
+    await startMcpServer(process.stdin, process.stdout);
+    return 0;
   }
   console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
