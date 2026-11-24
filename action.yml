@@ -34,6 +34,10 @@ inputs:
     description: 'Fail the gate when a linked issue ("Closes #N" in the PR body, or the issue input) has no proof file named for it. "true" or "false". Set false only if your PRs close issues okproof does not track.'
     required: false
     default: 'true'
+  lint:
+    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "e2e/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
+    required: false
+    default: auto
   node-version:
     description: Node.js version used to run okproof.
     required: false
@@ -108,11 +112,18 @@ runs:
       env:
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
+        LINT: ${{ inputs.lint }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         OKPROOF_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
       run: |
+        lint=()
+        case "$LINT" in
+          off) ;;
+          ''|auto) lint=(--lint=) ;;
+          *) lint=("--lint=$LINT") ;;
+        esac
         if [ -n "$RESULTS" ]; then
-          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR"
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${lint[@]}"
         else
           echo "No results input; using ledgers already in $DIR."
         fi
@@ -131,14 +142,21 @@ runs:
         DIR: ${{ inputs.dir }}
         RESULTS: ${{ inputs.results }}
         REQUIRED: ${{ steps.issues.outputs.required }}
+        LINT: ${{ inputs.lint }}
       run: |
+        lint=()
+        case "$LINT" in
+          off) ;;
+          ''|auto) lint=(--lint=) ;;
+          *) lint=("--lint=$LINT") ;;
+        esac
         # Gate from the results ingested in THIS job, never from a committed ledger.
         # Every issue the PR links must have its own proof file.
         if [ "$GATE" = "true" ]; then
           extra=()
           [ -n "$REQUIRED" ] && extra+=(--require-issues "$REQUIRED")
           if [ -n "$RESULTS" ]; then
-            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "$DIR"
+            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "${lint[@]}" "$DIR"
           else
             echo "::warning::okproof: No results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
             node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "${extra[@]}" "$DIR"

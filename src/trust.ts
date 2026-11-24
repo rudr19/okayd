@@ -12,10 +12,18 @@ import { parseCTRF } from './ctrf.js';
 import { evaluateGate } from './gate.js';
 import { buildLedger, type Ledger, type TestOutcome } from './ledger.js';
 import { parseJUnit } from './junit.js';
+import { lintOutcomes } from './lint.js';
 import { parseProof } from './proof.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
 
 export type ResultsFormat = 'junit' | 'ctrf';
+
+/** What `--lint [path]` asks for: test files to scan, and whether unrelated tests fail. */
+export interface LintRequest {
+  /** Path or glob limiting the scan. Absent: every test file under the working directory. */
+  tests?: string;
+  strictRelevance?: boolean;
+}
 
 export const sha256Hex = (text: string): string => createHash('sha256').update(text).digest('hex');
 
@@ -41,10 +49,16 @@ async function proofNames(dir: string): Promise<string[]> {
 export async function ledgersFromResults(
   dir: string,
   resultsFile: string,
-  opts: { format?: string; strictAssertions?: boolean } = {},
+  opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; report?: (line: string) => void } = {},
 ): Promise<Ledger[]> {
   const text = await readFile(resultsFile, 'utf8');
-  const outcomes = parseResults(text, resultsFile, opts.format);
+  let outcomes = parseResults(text, resultsFile, opts.format);
+  if (opts.lint) {
+    const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance });
+    outcomes = l.outcomes;
+    for (const line of l.lines) opts.report?.(line);
+    if (!l.ok) throw new Error('okproof lint: a tagged test is possibly unrelated to its criterion (--strict-relevance).');
+  }
   const results_sha256 = sha256Hex(text);
   const ledgers: Ledger[] = [];
   for (const name of await proofNames(dir)) {
@@ -154,7 +168,7 @@ export function parseGateArgs(list: string[]): GateArgs {
 }
 
 /** `okproof gate`: returns the exit code. */
-export async function runGate(list: string[], opts: { format?: string; strictAssertions?: boolean }): Promise<number> {
+export async function runGate(list: string[], opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest }): Promise<number> {
   let a: GateArgs;
   try {
     a = parseGateArgs(list);
@@ -162,10 +176,14 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
     console.error((e as Error).message);
     return 2;
   }
+  if (opts.lint && a.results === undefined) {
+    console.error('--lint needs --results: lint marks tests from a test run, and there is no run to mark.');
+    return 2;
+  }
   let ledgers: Ledger[] | undefined;
   if (a.results !== undefined) {
     try {
-      ledgers = await ledgersFromResults(a.dir, a.results, opts);
+      ledgers = await ledgersFromResults(a.dir, a.results, { ...opts, report: (l) => console.log(l) });
     } catch (e) {
       console.error(`Could not read test results from ${a.results}: ${(e as Error).message}`);
       return 2;

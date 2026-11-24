@@ -6,7 +6,8 @@
 // indentation block reader (Python). Every pass over the text is linear.
 import { open, readdir } from 'node:fs/promises';
 import { join, resolve, relative, sep } from 'node:path';
-import { parseProof } from './proof.js';
+import { claimedCriteria, parseProof } from './proof.js';
+import type { TestOutcome } from './ledger.js';
 import { bodyWords, criterionKeywords, missingKeywords, removeTrivial, stripTags, topWords } from './relevance.js';
 
 export interface LintOptions {
@@ -28,6 +29,8 @@ export interface LintFinding {
   title: string;
   /** Why a test is weak: no assertion at all, or only trivial ones such as expect(true).toBe(true). */
   reason?: 'none' | 'trivial';
+  /** The test's own title without its tags (the function name for Python). Used to match a runner's outcome. */
+  name?: string;
 }
 
 export interface RelevanceFinding {
@@ -79,8 +82,29 @@ const ASSERTION =
 // ---------------------------------------------------------------------------
 // Scanners
 
-/** Characters after which a "/" starts a regex literal rather than a division. */
+/**
+ * Characters after which a "/" starts a regex literal rather than a division.
+ * Also: the start of a line, and the keyword `return`. After an identifier, a
+ * number, ")" or "]" a "/" is a division.
+ */
 const REGEX_PREV = '(,=:[!&|?{};';
+/** A regex literal longer than this is not scanned: bounds the work of a "/" that never closes. */
+const MAX_REGEX_CHARS = 1000;
+
+const isIdentChar = (c: string | undefined): boolean => c !== undefined && /[\w$]/.test(c);
+
+/** True when the text just before `i` is the keyword `return` (a "/" after it starts a regex). */
+function afterReturn(src: string, i: number): boolean {
+  let k = i - 1;
+  const stop = Math.max(0, i - 64);
+  while (k >= stop && (src[k] === ' ' || src[k] === '\t' || src[k] === '\n' || src[k] === '\r')) k--;
+  return k >= 5 && src.slice(k - 5, k + 1) === 'return' && !isIdentChar(src[k - 6]);
+}
+
+/** Text of a regex literal for the relevance check: escapes such as \b, \d, \w become spaces, so "\bhello\b" yields "hello". */
+function regexText(body: string): string {
+  return body.replace(/\\[a-zA-Z]/g, ' ');
+}
 
 interface Scan {
   /** The scanned text with strings, comments and regex literals blanked. */
@@ -109,6 +133,7 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
   let depth = 0;
   let floor: number | undefined;
   let last = '';
+  let lineStart = true;
   let i = from;
   const blank = (to: number): void => {
     parts.push(src.slice(codeStart, i), ' ');
@@ -125,11 +150,12 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
     } else if (c === '/' && next === '*') {
       const close = src.indexOf('*/', i + 2);
       blank(close === -1 ? n : close + 2);
-    } else if (c === '/' && (last === '' || REGEX_PREV.includes(last))) {
+    } else if (c === '/' && (lineStart || last === '' || REGEX_PREV.includes(last) || (isIdentChar(last) && afterReturn(src, i)))) {
       let j = i + 1;
       let inClass = false;
       let closed = false;
-      while (j < n && src[j] !== '\n') {
+      const cap = Math.min(n, i + MAX_REGEX_CHARS);
+      while (j < cap && src[j] !== '\n') {
         const d = src[j]!;
         if (d === '\\') j += 2;
         else {
@@ -143,24 +169,29 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
         }
       }
       if (closed) {
+        // A regex literal is text the test mentions, like a string.
+        if (lits.length < MAX_LITS) lits.push(regexText(src.slice(i + 1, Math.min(j, i + 1 + MAX_LIT_CHARS))));
         blank(j + 1);
         last = 'a';
       } else {
         last = c;
         i++;
       }
+      lineStart = false;
     } else if (c === '"' || c === "'") {
       let j = i + 1;
       while (j < n && src[j] !== c && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
       lit(i + 1, Math.min(j, n));
       blank(Math.min(n, src[j] === '\n' ? j : j + 1));
       last = 'a';
+      lineStart = false;
     } else if (c === '`') {
       let j = i + 1;
       while (j < n && src[j] !== '`') j += src[j] === '\\' ? 2 : 1;
       lit(i + 1, Math.min(j, n));
       blank(Math.min(n, j + 1));
       last = 'a';
+      lineStart = false;
     } else {
       if (c === '(' || c === '{' || c === '[') depth++;
       else if (c === ')' || c === '}' || c === ']') {
@@ -170,7 +201,11 @@ export function scanBraces(src: string, from: number, tagIdx: number): Scan {
           break;
         }
       }
-      if (c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r') last = c;
+      if (c === '\n') lineStart = true;
+      else if (c !== ' ' && c !== '\t' && c !== '\r') {
+        last = c;
+        lineStart = false;
+      }
       i++;
     }
   }
@@ -384,23 +419,58 @@ function pythonBlock(lines: string[], defIdx: number): string {
 // ---------------------------------------------------------------------------
 // File discovery
 
-function globToRegExp(glob: string): RegExp {
-  let re = '';
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i]!;
-    if (c === '*' && glob[i + 1] === '*') {
-      if (glob[i + 2] === '/') {
-        re += '(?:.*/)?';
-        i += 2;
-      } else {
-        re += '.*';
-        i += 1;
-      }
-    } else if (c === '*') re += '[^/]*';
-    else if (c === '?') re += '[^/]';
-    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+/** Longest glob accepted for --tests. */
+export const MAX_GLOB_CHARS = 512;
+
+/** One path segment against one pattern segment: "*" any run, "?" one character. Two pointers, no regex: O(n*m) at worst. */
+function segmentMatch(p: string, s: string): boolean {
+  let pi = 0;
+  let si = 0;
+  let star = -1;
+  let mark = 0;
+  while (si < s.length) {
+    if (pi < p.length && (p[pi] === '?' || p[pi] === s[si])) {
+      pi++;
+      si++;
+    } else if (pi < p.length && p[pi] === '*') {
+      star = pi++;
+      mark = si;
+    } else if (star !== -1) {
+      pi = star + 1;
+      si = ++mark;
+    } else return false;
   }
-  return new RegExp(`^${re}$`);
+  while (pi < p.length && p[pi] === '*') pi++;
+  return pi === p.length;
+}
+
+/**
+ * Match a "/"-separated relative path against a glob: "*" (not across "/"), "?",
+ * a "**" segment (any number of directories, including none), literal text.
+ * No regular expression is built from the pattern. Throws when the pattern is
+ * longer than MAX_GLOB_CHARS. Work is bounded by segments(pattern) * segments(path).
+ */
+export function globMatch(glob: string, path: string): boolean {
+  if (glob.length > MAX_GLOB_CHARS) throw new Error(`--tests pattern is longer than ${MAX_GLOB_CHARS} characters`);
+  const ps = glob.split('/');
+  const ss = path.split('/');
+  // row[j]: pattern segments consumed so far match the first j path segments
+  let row = new Array<boolean>(ss.length + 1).fill(false);
+  row[0] = true;
+  for (const p of ps) {
+    const next = new Array<boolean>(ss.length + 1).fill(false);
+    if (p === '**') {
+      let any = false;
+      for (let j = 0; j <= ss.length; j++) {
+        any = any || row[j]!;
+        next[j] = any;
+      }
+    } else {
+      for (let j = 1; j <= ss.length; j++) next[j] = row[j - 1]! && segmentMatch(p, ss[j - 1]!);
+    }
+    row = next;
+  }
+  return row[ss.length]!;
 }
 
 async function readCapped(path: string): Promise<string | undefined> {
@@ -418,7 +488,7 @@ interface Walk {
   truncated: boolean;
 }
 
-async function walk(base: string, root: string, filter: RegExp | undefined): Promise<Walk> {
+async function walk(base: string, root: string, filter: ((rel: string) => boolean) | undefined): Promise<Walk> {
   const files: string[] = [];
   const stack = [base];
   let visited = 0;
@@ -444,7 +514,7 @@ async function walk(base: string, root: string, filter: RegExp | undefined): Pro
         const rel = relative(root, full).split(sep).join('/');
         const ext = e.name.slice(e.name.lastIndexOf('.') + 1);
         if (!SOURCE_EXT.has(ext) || !TEST_NAME.test(rel)) continue;
-        if (filter && !filter.test(rel)) continue;
+        if (filter && !filter(rel)) continue;
         if (files.length >= MAX_FILES) {
           truncated = true;
           break;
@@ -483,7 +553,7 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
   const root = resolve(options.dir ?? '.');
   const notes: string[] = [];
   let base = root;
-  let filter: RegExp | undefined;
+  let filter: ((rel: string) => boolean) | undefined;
   let single: string | undefined;
   if (options.tests !== undefined && options.tests !== '') {
     const spec = options.tests.split(sep).join('/').replace(/^\.\//, '');
@@ -491,7 +561,8 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
       const segs = spec.split('/');
       const firstGlob = segs.findIndex((s) => /[*?]/.test(s));
       base = resolve(root, segs.slice(0, firstGlob).join('/'));
-      filter = globToRegExp(spec);
+      if (spec.length > MAX_GLOB_CHARS) throw new Error(`--tests pattern is longer than ${MAX_GLOB_CHARS} characters`);
+      filter = (rel) => globMatch(spec, rel);
     } else {
       base = resolve(root, spec);
       const fh = await open(base, 'r').catch(() => undefined);
@@ -536,7 +607,7 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     scanned++;
     const found = analyzeSource(src, f.endsWith('.py'));
     for (const t of found.tests) {
-      if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title, reason: t.trivial ? 'trivial' : 'none' });
+      if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title, reason: t.trivial ? 'trivial' : 'none', name: t.name });
       // A test with no assertions is already reported weak; relevance is about the rest.
       if (t.weak && !t.trivial) continue;
       for (const id of t.ids) {
@@ -582,4 +653,69 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${unrelated.length} possibly unrelated${strictRelevance ? '' : ' (advisory)'}, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
   );
   return { weak, unrelated, dangling, untested, filesScanned: scanned, notes, lines, ok };
+}
+
+// ---------------------------------------------------------------------------
+// Feeding lint into the ledger
+
+const norm = (s: string): string => stripTags(s).toLowerCase();
+
+/**
+ * Mark the outcomes lint found weak as having asserted nothing (assertions = 0),
+ * so their criterion becomes "unproven" instead of "met". Matched by the
+ * [okproof:<id>] tag plus the test title: the outcome must claim one of the
+ * finding's ids and its title (tags removed) must contain the finding's test
+ * name, or the other way round. A runner's own assertion count is the authority:
+ * a count above zero stands, except for a test lint calls trivial. Returns new
+ * outcomes; the input is not changed.
+ */
+export function applyLintToOutcomes(outcomes: TestOutcome[], weak: LintFinding[]): { outcomes: TestOutcome[]; marked: string[] } {
+  const marked: string[] = [];
+  const result = outcomes.map((o) => {
+    const ids = claimedCriteria(o.title);
+    if (ids.length === 0) return o;
+    const title = norm(o.title);
+    const hit = weak.find((f) => {
+      if (!f.ids.some((id) => ids.includes(id))) return false;
+      const name = f.name === undefined ? '' : norm(f.name);
+      return name === '' || title.includes(name) || (title !== '' && name.includes(title));
+    });
+    if (!hit) return o;
+    if (o.assertions !== undefined && !(hit.reason === 'trivial' && o.assertions > 0)) return o;
+    marked.push(o.title);
+    return { ...o, assertions: 0 };
+  });
+  return { outcomes: result, marked };
+}
+
+export interface LintOutcomesOptions {
+  /** Project root to scan for test files. Default ".". */
+  dir?: string;
+  /** Limit the scan to a path or glob. Default: every test file under dir. */
+  tests?: string;
+  /** Folder holding proof files. */
+  proofDir?: string;
+  strictRelevance?: boolean;
+}
+
+export interface LintOutcomesResult {
+  outcomes: TestOutcome[];
+  /** Titles of outcomes marked weak by lint. */
+  marked: string[];
+  lint: LintResult;
+  /** Human lines: one per marked test, plus advisory relevance warnings. */
+  lines: string[];
+  /** False only with strictRelevance and an unrelated test. */
+  ok: boolean;
+}
+
+/** Run lint and apply its weak findings to `outcomes`. Relevance stays advisory unless strictRelevance. */
+export async function lintOutcomes(outcomes: TestOutcome[], options: LintOutcomesOptions = {}): Promise<LintOutcomesResult> {
+  const lint = await lintTests({ dir: options.dir, tests: options.tests, proofDir: options.proofDir, strictRelevance: options.strictRelevance });
+  const applied = applyLintToOutcomes(outcomes, lint.weak);
+  const lines: string[] = [];
+  for (const m of applied.marked) lines.push(`okproof lint: marked weak (no real assertion): ${m}`);
+  for (const u of lint.unrelated) lines.push(`okproof lint: possibly unrelated: test '${u.test}' claims ${u.id} but never mentions ${u.missing.join(', ')}`);
+  const ok = options.strictRelevance !== true || lint.unrelated.length === 0;
+  return { outcomes: applied.outcomes, marked: applied.marked, lint, lines, ok };
 }
