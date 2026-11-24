@@ -1,1 +1,6 @@
 * @rudr19
+
+# Protect the proof files so criteria can't be weakened without a human review.
+# This repo's own .okproof/ (uncomment once the folder exists and add a second
+# reviewer, since the default owner above already covers it):
+# /.okproof/ @rudr19

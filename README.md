@@ -112,7 +112,27 @@ that reruns update. Give the job `pull-requests: write`, or pass
 ## 4. Gate the merge
 
 `npx okproof gate` exits 1 unless every criterion is met. Make it a required
-check.
+check. The gate re-reads the proof files, so a stale ledger, a missing ledger or
+stale verifier results fail it; the Action's `proven` output, the PR comment and
+the MCP `okproof_status` verdict all use the same function.
+
+### Protect `.okproof/` with CODEOWNERS
+
+Nothing in okproof stops an agent (or anyone with write access) from editing a
+proof file to weaken a criterion. Make that a reviewed change: add a
+`CODEOWNERS` entry for the folder and turn on required code-owner review.
+
+```
+# .github/CODEOWNERS
+/.okproof/ @your-org/reviewers
+```
+
+Then in the repository settings (Branch protection or a ruleset for your
+default branch) enable "Require a pull request before merging" and "Require
+review from Code Owners", and make the okproof gate a required status check. A
+pull request that touches `.okproof/*.md` now needs a human owner's approval, so
+criteria cannot be silently removed or reworded by the author of the change.
+Use a team or a person who is not the agent's account.
 
 ## Weak tests
 
