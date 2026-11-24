@@ -1,9 +1,50 @@
 # Why okproof
 
-## Mission
+## The idea: an auditor that tries to disprove "done"
 
-**Make "done" checkable.** When a coding agent (or a person) says a change is
-finished, okproof shows, criterion by criterion, whether the evidence agrees.
+Most tools confirm. An agent writes code and tests, CI goes green, and "done"
+is accepted because nothing contradicted it. okproof inverts that. It is an
+**auditor whose job is to falsify the claim "done"**: it looks for the
+criterion that is not covered, the test that asserts nothing, the bug that
+survives an attack. "Done" stands only if the audit fails to knock it down.
+That is a different idea from a test runner, a browser agent, or a CI reporter,
+and it works on top of all of them.
+
+## How okproof thinks
+
+1. **The criterion is the unit, not the test.** Green tests are not the
+   question. "Does this acceptance criterion hold, and what is the evidence?" is.
+   Every verdict is per criterion.
+2. **Silence counts against you.** A criterion with no test, a flaky pass, a
+   passing test with no assertion, or a test that is not tagged to the
+   criterion is **not met**. Absence of failure is never proof.
+3. **The auditor is never the author.** The agent that wrote the code does not
+   grade it. An independent verifier attacks each criterion, and only a bug that
+   reproduces on a model-free replay counts. A model's opinion never decides a
+   verdict.
+4. **Graded evidence, not pass/fail.** Evidence comes in levels (below).
+   Today the ledger records the verdict and the evidence behind it; the full
+   ladder is planned.
+5. **Neutral across vendors.** okproof audits runs from any agent or test
+   runner (Playwright, Vitest, Jest, pytest, Cypress, Go, e2e) through open
+   JUnit XML and CTRF formats. It does not care which agent wrote the change.
+
+### Evidence Levels (planned model)
+
+| Level | Meaning | Status |
+|---|---|---|
+| E0 | Claimed: the agent or author says it is done | baseline, no evidence |
+| E1 | A test tagged to the criterion passed | shipped (`met` requires at least this) |
+| E2 | The passing test makes a real, relevant assertion | partly shipped: zero-assertion tests are `unproven` and `lint` flags them; relevance is not judged |
+| E3 | Survived adversarial attack | partly shipped: the optional verifier plus model-free replay; the Anthropic adapter is untested against the live API |
+| E4 | Verified in CI from the base branch, with a signed ledger | **roadmap, not built**: ledgers are unsigned today |
+
+The ledger does not yet print a level per criterion; levels are the model the
+roadmap builds toward.
+
+## What is checked today
+
+"Proves" in the tagline is the product promise. This is exactly what is checked:
 
 "Proves" in the tagline is the product promise. This is exactly what is checked:
 

@@ -42,6 +42,33 @@ pull request gets one okproof comment, and the check fails until every criterion
 is met. `init` never overwrites a file; it prints what it skipped. Run it again
 and nothing changes.
 
+## How okproof thinks
+
+okproof is an auditor that tries to **disprove** "done", not to confirm it.
+"Done" stands only if the audit fails to knock it down. The principles (more in
+[WHY.md](WHY.md)):
+
+1. **The criterion is the unit, not the test.** Verdicts are per acceptance criterion.
+2. **Silence counts against you.** Untested, flaky, assertion-less or untagged tests are not met.
+3. **The auditor is never the author.** An independent verifier attacks; only model-free replay-confirmed bugs count.
+4. **Graded evidence, not pass/fail.** Planned Evidence Levels: E0 claimed, E1 tagged test passed, E2 real relevant assertion, E3 survived adversarial attack (partly shipped), E4 verified in CI from the base branch with a signed ledger (roadmap, not built).
+5. **Neutral across vendors.** It audits runs from any agent or runner through open JUnit and CTRF formats.
+
+## Works with
+
+Write JUnit XML (or CTRF JSON), then `npx okproof ingest <file>`.
+
+| Runner | Reporter flag | Then |
+| --- | --- | --- |
+| Playwright | `npx playwright test --reporter=junit` (set `PLAYWRIGHT_JUNIT_OUTPUT_NAME=junit.xml`) | `npx okproof ingest junit.xml` |
+| Vitest | `npx vitest run --reporter=junit --outputFile=junit.xml` | `npx okproof ingest junit.xml` |
+| Jest | `npx jest --reporters=default --reporters=jest-junit` (needs `jest-junit`) | `npx okproof ingest junit.xml` |
+| pytest | `python -m pytest --junitxml=junit.xml` | `npx okproof ingest junit.xml` |
+| Cypress | `npx cypress run --reporter junit --reporter-options mochaFile=junit.xml` | `npx okproof ingest junit.xml` |
+| Go | `gotestsum --junitfile junit.xml ./...` (needs gotestsum) | `npx okproof ingest junit.xml` |
+| e2e | its built-in `junit` reporter (see the e2e docs for the flag and output path) | `npx okproof ingest <that file>` |
+| Anything with CTRF | a CTRF reporter writing `ctrf-report.json` | `npx okproof ingest ctrf-report.json` |
+
 ## Install
 
 ```bash
@@ -390,7 +417,9 @@ API.
 issue to argue for a change.
 
 - Next: more runner coverage and flaky detection in JUnit.
-- Later, **not built yet**: "Harden" (commit passing verifier runs as tests
+- Later, **not built yet**: **Revert check** (temporarily undo the PR's code
+  change and re-run the tagged tests; if they still pass, the test doesn't cover
+  the change), "Harden" (commit passing verifier runs as tests
   linked to criteria), **signed ledgers** (GitHub OIDC), a **hosted proof page**
   with history, and Firefox and WebKit in the driver.
 
