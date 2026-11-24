@@ -7,24 +7,24 @@
 //                                 write .okproof/<n>.md from the GitHub issue (or a body file);
 //                                 with --check, change nothing and exit 1 if it would change
 // okproof ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
-// okproof gate   [dir] [--allow-empty]
-//                                 exit 1 unless every proof file has a fresh, fully met ledger
+// okproof gate   [dir] [--results <file> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty]
+//                                 exit 1 unless every proof file has a fresh, fully met ledger;
+//                                 with --results, ledgers are rebuilt in memory from the test results
+//                                 and committed ledgers are ignored
 // okproof lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, compareToIssueBody } from './proof.js';
 import { fetchIssue, syncProofFile, describeSync } from './sync.js';
-import { evaluateGate } from './gate.js';
-import { parseJUnit } from './junit.js';
-import { parseCTRF } from './ctrf.js';
+import { parseResults, runGate, sha256Hex } from './trust.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] | okproof lint [--tests <path|glob>] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
@@ -232,23 +232,19 @@ async function main(): Promise<number> {
       return 2;
     }
     const text = await readFile(file, 'utf8');
-    const kind = format ?? (file.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{') ? 'ctrf' : 'junit');
-    const outcomes = kind === 'ctrf' ? parseCTRF(text) : parseJUnit(text);
+    const outcomes = parseResults(text, file, format);
     const { lines } = await finalize(outcomes, {
       dir: args[2] ?? '.okproof',
       // The GitHub Action sets this when its `comment` input is false.
       github: process.env.OKPROOF_NO_COMMENT !== '1',
       strictAssertions,
+      resultsSha256: sha256Hex(text),
     });
     for (const line of lines) console.log(line);
     return 0;
   }
   if (cmd === 'gate') {
-    const dir = positional(args.slice(1), [])[0] ?? '.okproof';
-    const result = await evaluateGate(dir, { allowEmpty: args.includes('--allow-empty') });
-    for (const n of result.notes) console.log(n);
-    for (const p of result.problems) console.error(p);
-    return result.ok ? 0 : 1;
+    return runGate(args.slice(1), { format, strictAssertions });
   }
   if (cmd === 'lint') {
     const result = await lintTests({ dir: args[1] ?? '.', tests });

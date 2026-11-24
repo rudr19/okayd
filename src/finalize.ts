@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parseProof } from './proof.js';
 import { buildLedger, renderLedgerMarkdown, type Ledger, type TestOutcome } from './ledger.js';
 import { publishToGitHub } from './github.js';
+import { sha256Hex } from './trust.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
 
 export interface FinalizeOptions {
@@ -19,6 +20,8 @@ export interface FinalizeOptions {
    * Default: true only when OKPROOF_STRICT_ASSERTIONS=1.
    */
   strictAssertions?: boolean;
+  /** sha256 of the results file, recorded in each ledger as results_sha256. */
+  resultsSha256?: string;
 }
 
 export interface FinalizeResult {
@@ -36,7 +39,8 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
   const ledgers: Ledger[] = [];
   const lines: string[] = [];
   for (const f of files) {
-    let ledger = buildLedger(parseProof(await readFile(join(dir, f), 'utf8')), outcomes, { strictAssertions: strict });
+    const proofText = await readFile(join(dir, f), 'utf8');
+    let ledger: Ledger = { ...buildLedger(parseProof(proofText), outcomes, { strictAssertions: strict }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText) };
     // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified) ledger = applyVerifyFile(ledger, verified);

@@ -114,6 +114,12 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okproof gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+A committed ledger is only a claim, so in CI gate from the job's own results:
+`npx okproof gate --results junit.xml --require-issues 142,143` rebuilds the
+ledgers in memory and ignores committed ones (the Action does this when its
+`results` input is set). Do not commit `.okproof/ledger-*`. See
+[docs/trust.md](docs/trust.md).
+
 ## Weak tests
 
 A tag is a claim; an assertion is evidence. A tagged test that passes but makes

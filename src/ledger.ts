@@ -33,6 +33,10 @@ export interface Ledger {
   entries: LedgerEntry[];
   /** True only when every criterion is met. Untested and unproven never count as a pass. */
   proven: boolean;
+  /** sha256 of the results file okproof ingest read. Absent on ledgers not written by ingest. */
+  results_sha256?: string;
+  /** sha256 of the proof file text the ledger was built from. */
+  proof_sha256?: string;
 }
 
 export interface LedgerOptions {
