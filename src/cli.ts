@@ -2,7 +2,8 @@
 // okayd check  [dir]              validate proof files and print each criterion's tag
 // okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
 // okayd gate   [dir]              exit 1 unless every written ledger is proven
-// okayd mcp                       serve Okayd to coding agents over MCP (stdio)
+// okayd lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
+// okayd mcp                     serve Okayd to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof } from './proof.js';
@@ -12,13 +13,19 @@ import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
+import { lintTests } from './lint.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd lint [--tests <path|glob>] [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
+let tests: string | undefined;
+let strictAssertions = process.env.OKAYD_STRICT_ASSERTIONS === '1';
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--format') format = argv[++i];
+  if (argv[i] === '--strict-assertions') strictAssertions = true;
+  else if (argv[i] === '--tests') tests = argv[++i];
+  else if (argv[i].startsWith('--tests=')) tests = argv[i].slice('--tests='.length);
+  else if (argv[i] === '--format') format = argv[++i];
   else if (argv[i].startsWith('--format=')) format = argv[i].slice('--format='.length);
   else args.push(argv[i]);
 }
@@ -108,6 +115,7 @@ async function main(): Promise<number> {
       dir: args[2] ?? '.okayd',
       // The GitHub Action sets this when its `comment` input is false.
       github: process.env.OKAYD_NO_COMMENT !== '1',
+      strictAssertions,
     });
     for (const line of lines) console.log(line);
     return 0;
@@ -125,9 +133,17 @@ async function main(): Promise<number> {
       if (!ledger.proven) {
         ok = false;
         console.error(`#${ledger.issue} is not proven`);
+        for (const e of ledger.entries ?? []) {
+          if (e.verdict === 'unproven') console.error(`  ${e.id} UNPROVEN (no assertions): add a real assertion to ${(e.weak ?? []).join(', ') || 'its tagged tests'}`);
+        }
       }
     }
     return ok ? 0 : 1;
+  }
+  if (cmd === 'lint') {
+    const result = await lintTests({ dir: args[1] ?? '.', tests });
+    for (const line of result.lines) console.log(line);
+    return result.ok ? 0 : 1;
   }
   if (cmd === 'mcp') {
     await startMcpServer(process.stdin, process.stdout);

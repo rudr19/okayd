@@ -28,7 +28,11 @@ export function renderComment(ledgers: Ledger[]): string {
   const head = proven
     ? '## Okayd: every criterion proven'
     : '## Okayd: not proven yet';
-  return [COMMENT_MARKER, head, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
+  const unproven = ledgers.flatMap((l) => l.entries.filter((e) => e.verdict === 'unproven').map((e) => `#${l.issue} ${e.id}`));
+  const note = unproven.length
+    ? ['', `Silence is not proof: ${unproven.join(', ')} only passed tests that made no assertions. Add a real assertion to each tagged test.`]
+    : [];
+  return [COMMENT_MARKER, head, ...note, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
 }
 
 /** The pull request number from the event payload, or from refs/pull/N/merge. */

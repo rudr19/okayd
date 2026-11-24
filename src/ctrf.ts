@@ -16,6 +16,7 @@ interface CtrfTest {
   retries?: number;
   filePath?: string;
   attachments?: CtrfAttachment[];
+  extra?: { assertions?: unknown };
 }
 
 function statusOf(t: CtrfTest): string {
@@ -57,6 +58,8 @@ export function parseCTRF(input: string | object): TestOutcome[] {
   }
   return (tests as CtrfTest[]).map((t) => {
     const status = statusOf(t);
-    return { title: t.name ?? '', status, evidence: evidenceOf(t, status) };
+    const n = t.extra?.assertions;
+    const assertions = typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : undefined;
+    return { title: t.name ?? '', status, evidence: evidenceOf(t, status), ...(assertions !== undefined ? { assertions } : {}) };
   });
 }

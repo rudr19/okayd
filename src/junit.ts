@@ -30,10 +30,13 @@ export function parseJUnit(xml: string): TestOutcome[] {
     else if (/<(failure|error)\b/.test(body)) status = 'failed';
     const seconds = attrs.time ? Number(attrs.time) : undefined;
     const where = attrs.classname ? ` (${attrs.classname})` : '';
+    // PHPUnit and some pytest plugins write assertions="N"; absent means unknown.
+    const counted = attrs.assertions !== undefined && /^\d{1,9}$/.test(attrs.assertions.trim()) ? Number(attrs.assertions) : undefined;
     outcomes.push({
       title: attrs.name ?? '',
       status,
       evidence: `${status}${seconds !== undefined && !Number.isNaN(seconds) ? ` in ${seconds.toFixed(1)}s` : ''}${where}`,
+      ...(counted !== undefined ? { assertions: counted } : {}),
     });
   }
   return outcomes;

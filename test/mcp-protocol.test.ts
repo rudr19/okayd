@@ -36,7 +36,7 @@ test('tools/list exposes the four tools with schemas', async () => {
   const { out, send } = harness();
   await send({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
   const tools = out[0].result.tools;
-  assert.deepEqual(tools.map((t: any) => t.name).sort(), ['okayd_add_criterion', 'okayd_criteria', 'okayd_ingest_junit', 'okayd_status']);
+  assert.deepEqual(tools.map((t: any) => t.name).sort(), ['okayd_add_criterion', 'okayd_criteria', 'okayd_ingest_junit', 'okayd_lint', 'okayd_status']);
   for (const t of tools) {
     assert.equal(t.inputSchema.type, 'object');
     assert.ok(t.description.length > 20);

@@ -12,7 +12,30 @@ interface PwTestCase {
   id?: string;
 }
 
+interface PwStep {
+  category?: string;
+  steps?: PwStep[];
+}
+
+/**
+ * Count Playwright `expect` steps (soft assertions included) in a result's step
+ * tree. Undefined when the result carries no step list, so the count is unknown.
+ */
+export function countAssertions(steps: unknown): number | undefined {
+  if (!Array.isArray(steps)) return undefined;
+  let count = 0;
+  const stack: unknown[] = [...steps];
+  while (stack.length > 0) {
+    const step = stack.pop() as PwStep | null | undefined;
+    if (!step || typeof step !== 'object') continue;
+    if (step.category === 'expect') count++;
+    if (Array.isArray(step.steps)) stack.push(...step.steps);
+  }
+  return count;
+}
+
 interface PwTestResult {
+  steps?: PwStep[];
   status: 'passed' | 'failed' | 'timedOut' | 'skipped' | 'interrupted';
   retry: number;
   duration: number;
@@ -42,7 +65,8 @@ export default class OkaydPlaywrightReporter {
     if (status === 'passed' && result.retry > 0) status = 'flaky';
     const trace = result.attachments.find((a) => a.name === 'trace' && a.path)?.path;
     const evidence = trace ?? `${status} in ${(result.duration / 1000).toFixed(1)}s`;
-    this.results.set(key, { title: test.title, status, evidence });
+    const assertions = countAssertions(result.steps);
+    this.results.set(key, { title: test.title, status, evidence, ...(assertions !== undefined ? { assertions } : {}) });
   }
 
   async onEnd(): Promise<void> {

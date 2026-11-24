@@ -77,6 +77,57 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okayd gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+## Weak tests
+
+A tag is a claim; an assertion is evidence. A tagged test that passes but makes
+zero assertions proves nothing, so Okayd will not call its criterion met.
+Silence is not proof.
+
+A criterion gets one of four verdicts:
+
+- `failed`: any claiming test failed, was flaky, skipped or timed out.
+- `unproven` (shown as "UNPROVEN (no assertions)"): the claiming tests passed, but every one of them is weak. The ledger lists the weak test titles.
+- `met`: all claiming tests passed and at least one made a real assertion.
+- `untested`: no test claims it.
+
+A test is weak when its assertion count is exactly `0`. An unknown count (the
+runner did not say) is not weak, so runners without counts keep working. Pass
+`--strict-assertions` (or set `OKAYD_STRICT_ASSERTIONS=1`) to `okayd ingest`,
+or `strictAssertions: true` to the reporter, to treat unknown as weak.
+
+How each runner reports counts:
+
+- **Playwright reporter**: counts `expect` steps in the result's step tree, nested ones and `expect.soft` included. A result with no step list is unknown.
+- **JUnit**: the `assertions="N"` attribute on `<testcase>` (PHPUnit style). Absent means unknown.
+- **CTRF**: `extra.assertions` on a test, when it is a number. Otherwise unknown.
+
+A confirmed verifier refutation still makes a criterion `failed`.
+
+### `okayd lint`
+
+A static check that needs no test run:
+
+```bash
+npx okayd lint                       # scan the working directory
+npx okayd lint --tests e2e           # limit to a path, file or glob such as "e2e/**/*.spec.ts"
+```
+
+It finds tests whose title has `[okayd:<id>]` and reports the ones with no
+assertion in the body (`expect(`, `assert`, `.should(`, `t.Error`, `t.Fatal`,
+`require.`, `toBe`, `toEqual`, `toHave`, ...). It also reports tags naming a
+criterion that no proof file lists, and criteria no tagged test claims. It
+exits 1 on a weak test or a dangling tag. Untested criteria are listed but do
+not fail the run. Also available as `lintTests()` and the `okayd_lint` MCP tool.
+
+It scans `*.test.*`, `*.spec.*`, `*.e2e.*`, `test_*.py`, `*_test.py` and
+`*_test.go`, skipping `node_modules`, `dist` and `.git`, files over 1 MB and
+anything past 5000 files. It is a heuristic with no parser: it follows
+brackets while skipping strings, comments and regex literals (JS, TS, Go) or
+reads the indented block (Python). Put the tag in the test title. A test
+that only calls a helper which asserts is reported weak, and a tag in a comment
+above a test is not followed. Treat a hit as a prompt to look, not a verdict.
+The ledger counts from your runner are the authority.
+
 ## GitHub Action
 
 Okayd ships as a composite action. Run your tests so they write JUnit XML, then
@@ -217,6 +268,7 @@ working directory):
 - `okayd_criteria` lists criteria and the `[okayd:<issue>.<n>]` tag for each test title.
 - `okayd_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
 - `okayd_ingest_junit` builds ledgers from a JUnit XML report.
+- `okayd_lint` finds tagged tests with no assertion, dangling tags and untested criteria. `okayd_status` reports criteria whose tests passed without asserting as unproven and names the tests.
 - `okayd_add_criterion` appends a criterion. Agents can add criteria but not remove or edit them.
 
 `skills/okayd/SKILL.md` is a Claude Code skill that tells agents to follow this
@@ -231,6 +283,7 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 - [x] MCP server so coding agents check "done" through Okayd
 - [x] CTRF ingest
 - [x] Verifier agent that attacks each criterion on the preview deployment
+- [x] Weak-test check: a tagged test that asserts nothing cannot make a criterion met
 - [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
 

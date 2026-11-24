@@ -1,10 +1,11 @@
-// The four Okayd tools an agent can call over MCP. Handlers take a `cwd`
+// The Okayd tools an agent can call over MCP. Handlers take a `cwd`
 // so tests (and embedders) never depend on process.cwd().
 import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseProof, type ProofFile } from '../proof.js';
 import { parseJUnit } from '../junit.js';
 import { finalize } from '../finalize.js';
+import { lintTests } from '../lint.js';
 import type { Ledger, LedgerEntry, Verdict } from '../ledger.js';
 
 export interface ToolContext {
@@ -147,8 +148,9 @@ interface Row {
 function mergeLedger(proof: ProofFile, ledger: Ledger | undefined): Row[] {
   return proof.criteria.map((c) => {
     const found = ledger?.entries?.find((e) => e.id === c.id);
-    const verdict: Verdict = found && (found.verdict === 'met' || found.verdict === 'failed') ? found.verdict : 'untested';
-    return { entry: { id: c.id, text: c.text, verdict, tests: found?.tests ?? [] } };
+    const verdict: Verdict =
+      found && (found.verdict === 'met' || found.verdict === 'failed' || found.verdict === 'unproven') ? found.verdict : 'untested';
+    return { entry: { id: c.id, text: c.text, verdict, tests: found?.tests ?? [], weak: found?.weak } };
   });
 }
 
@@ -173,7 +175,7 @@ const okayd_status: ToolDefinition = {
   description:
     'The definition of done. Call this BEFORE telling the user a task is finished. Reports, per issue, which acceptance criteria are ' +
     'proven (met), failed or untested, based on the ledger the test run wrote. The first line is the verdict ("Done" or "Not done"); ' +
-    'a "Next steps" list names every unmet criterion and its tag. Untested counts as not done.',
+    'a "Next steps" list names every unmet criterion and its tag. Untested counts as not done, and so does "unproven" (the tagged tests passed but asserted nothing).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -216,10 +218,13 @@ const okayd_status: ToolDefinition = {
         const evidence = e.tests.map((t) => (t.evidence ? `${t.status}, ${t.evidence}` : t.status)).join('; ');
         body.push(`  ${e.verdict.toUpperCase()}  ${e.id} ${e.text}${evidence ? ` (${evidence})` : ''}`);
         if (e.verdict !== 'met') {
+          const weakNames = (e.weak && e.weak.length > 0 ? e.weak : e.tests.map((t) => t.title)).join(', ');
           const why =
             e.verdict === 'failed'
               ? 'a tagged test failed; fix the code (not the criterion) and re-run'
-              : 'no passing test claims it; write one and tag its title';
+              : e.verdict === 'unproven'
+                ? `add a real assertion to ${weakNames}: it passed but asserted nothing, and silence is not proof`
+                : 'no passing test claims it; write one and tag its title';
           next.push(`${e.id} (${e.verdict}): ${e.text} — ${why}. Tag: [okayd:${e.id}]`);
         }
       }
@@ -320,7 +325,34 @@ const okayd_add_criterion: ToolDefinition = {
   },
 };
 
-export const tools: ToolDefinition[] = [okayd_criteria, okayd_status, okayd_ingest_junit, okayd_add_criterion];
+const okayd_lint: ToolDefinition = {
+  name: 'okayd_lint',
+  description:
+    'Static check for weak tests: finds tests tagged [okayd:<id>] whose body has no assertion, tags that name a criterion no proof file lists, ' +
+    'and criteria no tagged test claims. A tag is a claim; an assertion is evidence. Heuristic, never runs your tests. Paths must stay inside the working directory.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      dir: { type: 'string', description: 'Project root to scan, relative to the working directory. Default ".". Proof files are read from <dir>/.okayd.' },
+      tests: { type: 'string', description: 'Limit the scan to this directory, file or simple glob (relative to dir), e.g. "e2e" or "e2e/**/*.spec.ts".' },
+    },
+    additionalProperties: false,
+  },
+  async handler(args, ctx) {
+    const dir = resolveInside(ctx.cwd, optString(args, 'dir') ?? '.', 'dir');
+    const tests = optString(args, 'tests');
+    if (tests !== undefined) resolveInside(dir, tests.replace(/[*?].*$/, ''), 'tests');
+    let result;
+    try {
+      result = await lintTests({ dir, tests });
+    } catch (e) {
+      throw new ToolFailure((e as Error).message);
+    }
+    return [result.ok ? 'Lint passed: no weak tests or dangling tags.' : 'Lint failed: fix the items below.', '', ...result.lines].join('\n');
+  },
+};
+
+export const tools: ToolDefinition[] = [okayd_criteria, okayd_status, okayd_ingest_junit, okayd_add_criterion, okayd_lint];
 
 /** Run a tool; handler failures become isError results, never throw. */
 export async function runTool(tool: ToolDefinition, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
