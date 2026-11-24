@@ -56,6 +56,17 @@ npx vitest run --reporter=junit --outputFile=junit.xml
 npx okayd ingest junit.xml
 ```
 
+Or use CTRF (Common Test Report Format, ctrf.io). Many runners have a CTRF
+reporter; ingest the JSON it writes. A test with `flaky: true` or retries that
+passes is flaky, which is not proven.
+
+```bash
+npx okayd ingest ctrf-report.json
+```
+
+`ingest` picks the format from the file (`.json` is CTRF, otherwise JUnit XML).
+Force it with `--format junit` or `--format ctrf`.
+
 Both write `.okayd/ledger-<issue>.json` and `.md`. In GitHub Actions they also
 write the ledger to the job summary and post it as one pull request comment
 that reruns update. Give the job `pull-requests: write`, or pass
@@ -159,6 +170,7 @@ loop. Copy it to `.claude/skills/okayd/SKILL.md`.
 - [x] Playwright Test reporter and JUnit ingest for any runner
 - [x] Own Chrome driver (DevTools Protocol, no dependencies)
 - [x] MCP server so coding agents check "done" through Okayd
+- [x] CTRF ingest
 - [ ] Verifier agent that attacks each criterion on the preview deployment
 - [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
