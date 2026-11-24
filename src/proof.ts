@@ -52,3 +52,30 @@ const TAG = /\[okayd:([\w-]+\.\d+)\]/g;
 export function claimedCriteria(testTitle: string): string[] {
   return [...testTitle.matchAll(TAG)].map((m) => m[1]);
 }
+
+/** Checkbox lines ("- [ ]" / "- [x]") in an issue body, whitespace-normalised. */
+export function issueBodyCriteria(body: string): string[] {
+  const out: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const item = ITEM.exec(line);
+    if (item) out.push(item[1].replace(/\s+/g, ' '));
+  }
+  return out;
+}
+
+export interface CriteriaDrift {
+  /** In the issue body but not in the proof file. */
+  onlyInIssue: string[];
+  /** In the proof file but not in the issue body. */
+  onlyInProof: string[];
+}
+
+/** Compares a proof file's criteria with an issue body's checkboxes (order ignored). */
+export function compareToIssueBody(proof: ProofFile, body: string): CriteriaDrift {
+  const issue = issueBodyCriteria(body);
+  const mine = proof.criteria.map((c) => c.text.replace(/\s+/g, ' '));
+  return {
+    onlyInIssue: issue.filter((t) => !mine.includes(t)),
+    onlyInProof: mine.filter((t) => !issue.includes(t)),
+  };
+}
