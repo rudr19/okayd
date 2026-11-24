@@ -1,15 +1,23 @@
 #!/usr/bin/env node
 // okayd check  [dir]              validate proof files and print each criterion's tag
-// okayd ingest <junit.xml> [dir]  build ledgers from any runner's JUnit XML
+// okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
 // okayd gate   [dir]              exit 1 unless every written ledger is proven
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof } from './proof.js';
 import { parseJUnit } from './junit.js';
+import { parseCTRF } from './ctrf.js';
 import { finalize } from './finalize.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml> [dir] | okayd gate [dir]';
-const args = process.argv.slice(2);
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir]';
+const argv = process.argv.slice(2);
+let format: string | undefined;
+const args: string[] = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--format') format = argv[++i];
+  else if (argv[i].startsWith('--format=')) format = argv[i].slice('--format='.length);
+  else args.push(argv[i]);
+}
 const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
@@ -25,10 +33,17 @@ async function main(): Promise<number> {
   if (cmd === 'ingest') {
     const file = args[1];
     if (!file) {
-      console.error(`Name the JUnit XML file to read. ${USAGE}`);
+      console.error(`Name the JUnit XML or CTRF JSON file to read. ${USAGE}`);
       return 2;
     }
-    const { lines } = await finalize(parseJUnit(await readFile(file, 'utf8')), { dir: args[2] ?? '.okayd' });
+    if (format !== undefined && format !== 'junit' && format !== 'ctrf') {
+      console.error(`Unknown --format "${format}". Use junit or ctrf. ${USAGE}`);
+      return 2;
+    }
+    const text = await readFile(file, 'utf8');
+    const kind = format ?? (file.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{') ? 'ctrf' : 'junit');
+    const outcomes = kind === 'ctrf' ? parseCTRF(text) : parseJUnit(text);
+    const { lines } = await finalize(outcomes, { dir: args[2] ?? '.okayd' });
     for (const line of lines) console.log(line);
     return 0;
   }
