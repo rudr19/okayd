@@ -11,3 +11,4 @@ export * from './verify/index.js';
 export { startMcpServer } from './mcp/server.js';
 export { createProtocol, type Protocol, type ProtocolOptions } from './mcp/protocol.js';
 export { tools as mcpTools, runTool, type ToolDefinition, type ToolContext, type ToolResult } from './mcp/tools.js';
+export { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria, type SyncResult, type SyncOptions, type FetchedIssue } from './sync.js';

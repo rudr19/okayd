@@ -22,6 +22,14 @@ inputs:
     description: Post the ledger as a pull request comment and job summary. "true" or "false".
     required: false
     default: 'true'
+  issue:
+    description: GitHub issue number whose checkboxes are the criteria. Optional; when empty, issues the PR body closes ("Closes #N", "Fixes #N", "Resolves #N") that already have a proof file are used.
+    required: false
+    default: ''
+  sync:
+    description: 'Keep proof files in step with the issue. "off" skips it; "check" fails if a proof file differs from its issue; "write" rewrites proof files in the workspace only (committing them is up to your workflow).'
+    required: false
+    default: check
   node-version:
     description: Node.js version used to run Okayd.
     required: false
@@ -52,6 +60,38 @@ runs:
         cd "$GITHUB_ACTION_PATH"
         npm ci --ignore-scripts --no-audit --no-fund
         npm run build
+
+    - name: Find issues to sync
+      id: issues
+      shell: bash
+      env:
+        SYNC: ${{ inputs.sync }}
+        ISSUE: ${{ inputs.issue }}
+        DIR: ${{ inputs.dir }}
+      run: |
+        case "$SYNC" in
+          off) echo "issues=" >> "$GITHUB_OUTPUT" ;;
+          check|write) node "$GITHUB_ACTION_PATH/scripts/action-linked-issues.mjs" ;;
+          *) echo "sync must be off, check or write, got: $SYNC" >&2; exit 2 ;;
+        esac
+
+    - name: Sync proof files with issues
+      shell: bash
+      env:
+        SYNC: ${{ inputs.sync }}
+        ISSUES: ${{ steps.issues.outputs.issues }}
+        DIR: ${{ inputs.dir }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        [ -n "$ISSUES" ] || exit 0
+        flag=""
+        [ "$SYNC" = "check" ] && flag="--check"
+        IFS=',' read -ra list <<< "$ISSUES"
+        status=0
+        for n in "${list[@]}"; do
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" sync --issue "$n" $flag "$DIR" || status=1
+        done
+        exit $status
 
     - name: Check proof files
       shell: bash
