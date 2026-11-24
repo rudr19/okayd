@@ -77,7 +77,9 @@ export function verdictLabel(verdict: Verdict): string {
   return MARK[verdict] ?? String(verdict);
 }
 
-const pipes = (s: string): string => s.replace(/\|/g, '\\|');
+// Escape backslashes first, then pipes, so a trailing "\" can't un-escape a
+// table separator (CodeQL js/incomplete-sanitization).
+const pipes = (s: string): string => s.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 
 export function renderLedgerMarkdown(ledger: Ledger): string {
   const met = ledger.entries.filter((e) => e.verdict === 'met').length;

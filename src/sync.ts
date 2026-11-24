@@ -16,8 +16,33 @@ import { apiBase } from './github.js';
 // Same pattern as src/github.ts (owner/name as GitHub allows them).
 const REPO = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 
-const ITEM = /^\s*[-*]\s+\[[ xX]\]\s+(.+?)\s*$/;
-const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
+// Greedy single captures, with trimming done in code: no lazy group next to an
+// optional whitespace run, which CodeQL flags as polynomial (js/polynomial-redos).
+const ITEM_RE = /^\s*[-*]\s+\[[ xX]\]\s+(\S.*)$/;
+const HEADING_RE = /^ {0,3}(#{1,6})[ \t]+(.*)$/;
+
+const ITEM = {
+  exec(line: string): [string, string] | null {
+    const m = ITEM_RE.exec(line);
+    return m ? [m[0], m[1]!.trimEnd()] : null;
+  },
+};
+
+/** Drops an ATX heading's optional closing hashes ("## Title ##") without a regex. */
+function headingText(raw: string): string {
+  let s = raw.trimEnd();
+  let end = s.length;
+  while (end > 0 && s[end - 1] === '#') end--;
+  if (end < s.length && (end === 0 || s[end - 1] === ' ' || s[end - 1] === '\t')) s = s.slice(0, end).trimEnd();
+  return s;
+}
+
+const HEADING = {
+  exec(line: string): [string, string, string] | null {
+    const m = HEADING_RE.exec(line);
+    return m ? [m[0], m[1]!, headingText(m[2]!)] : null;
+  },
+};
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
 const AC_HEADING = /^(?:\*\*|__)?acceptance criteria:?(?:\*\*|__)?:?$/i;
 
@@ -270,7 +295,13 @@ const CLOSING = /(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(
  * references like "Closes other/repo#5". Full issue URLs are not recognised.
  */
 export function linkedIssues(prBody: string): number[] {
-  const text = [...outsideFences(prBody ?? '')].join('\n').replace(/<!--[\s\S]*?-->/g, '');
+  // Strip HTML comments until none are left, so nested or overlapping markers
+  // can't leave a comment behind (CodeQL js/incomplete-multi-character-sanitization).
+  let text = [...outsideFences(prBody ?? '')].join('\n');
+  for (let prev = ''; prev !== text; ) {
+    prev = text;
+    text = text.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+  }
   const out: number[] = [];
   for (const m of text.matchAll(CLOSING)) {
     const n = Number(m[1]);
