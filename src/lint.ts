@@ -203,7 +203,7 @@ interface FileFindings {
   tags: { id: string; line: number; title: string }[];
 }
 
-const TAG_AT = /\[okproof:([\w-]+\.\d+)\]/y;
+const TAG_AT = /\[okproof:([\w-]+\.[a-z0-9-]+)\]/y;
 
 function lineAt(src: string, idx: number, cache: { pos: number; line: number; nl: number }): number {
   // Tags arrive in ascending order; each newline is found once (amortised linear).

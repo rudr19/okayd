@@ -320,7 +320,8 @@ const okproof_add_criterion: ToolDefinition = {
       const sep = existing === '' || existing.endsWith('\n') ? '' : '\n';
       await writeFile(path, `${existing}${sep}- [ ] ${text}\n`);
     }
-    const id = `${issue}.${index}`;
+    const added = parseProof(await readFile(path, 'utf8')).criteria.at(-1);
+    const id = added?.id ?? `${issue}.${index}`;
     return `Added criterion ${id} to ${shown}/${issue}.md. Tag its test: [okproof:${id}]`;
   },
 };
