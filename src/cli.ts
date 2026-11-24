@@ -1,12 +1,17 @@
 #!/usr/bin/env node
-// okayd check  [dir]              validate proof files and print each criterion's tag
+// okayd check  [dir] [--issue-body <file> [--issue N]]
+//                                 validate proof files and print each criterion's tag;
+//                                 with --issue-body, fail if the issue's checkboxes differ
+
 // okayd ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
-// okayd gate   [dir]              exit 1 unless every written ledger is proven
+// okayd gate   [dir] [--allow-empty]
+//                                 exit 1 unless every proof file has a fresh, fully met ledger
 // okayd lint   [--tests <path>] [dir]  flag tagged tests that assert nothing (exit 1 if any)
-// okayd mcp                     serve Okayd to coding agents over MCP (stdio)
+// okayd mcp                       serve Okayd to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parseProof } from './proof.js';
+import { parseProof, compareToIssueBody } from './proof.js';
+import { evaluateGate } from './gate.js';
 import { parseJUnit } from './junit.js';
 import { parseCTRF } from './ctrf.js';
 import { finalize } from './finalize.js';
@@ -15,7 +20,7 @@ import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] | okayd lint [--tests <path|glob>] [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okayd check [dir] [--issue-body <file> [--issue N]] | okayd ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okayd gate [dir] [--allow-empty] | okayd lint [--tests <path|glob>] [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
@@ -86,17 +91,51 @@ async function runVerify(): Promise<number> {
   }
   return refuted ? 1 : 0;
 }
+/** Arguments that are neither a flag nor the value of one of `valued`. */
+function positional(list: string[], valued: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!;
+    if (!a.startsWith('--')) out.push(a);
+    else if (valued.includes(a.slice(2))) i++;
+  }
+  return out;
+}
 const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
   if (cmd === 'check') {
-    const dir = args[1] ?? '.okayd';
-    for (const f of (await readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('ledger-'))) {
-      const proof = parseProof(await readFile(join(dir, f), 'utf8'));
+    const f = flags(args.slice(1));
+    const value = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+    const bodyFile = value('issue-body');
+    if (f.get('issue-body') === true) {
+      console.error(`--issue-body needs a file holding the issue text. ${USAGE}`);
+      return 2;
+    }
+    const dir = positional(args.slice(1), ['issue-body', 'issue'])[0] ?? '.okayd';
+    const proofs = [];
+    for (const name of (await readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('ledger-'))) {
+      const proof = parseProof(await readFile(join(dir, name), 'utf8'));
+      proofs.push(proof);
       console.log(`#${proof.issue} ${proof.title}`);
       for (const c of proof.criteria) console.log(`  [okayd:${c.id}] ${c.text}`);
     }
-    return 0;
+    if (bodyFile === undefined) return 0;
+    const wanted = value('issue');
+    const target = wanted ? proofs.find((p) => p.issue === wanted.replace(/^#/, '')) : proofs.length === 1 ? proofs[0] : undefined;
+    if (!target) {
+      console.error(wanted ? `No proof file for issue #${wanted.replace(/^#/, '')} in ${dir}.` : `${proofs.length} proof files in ${dir}: say which one the issue body belongs to with --issue <number>.`);
+      return 2;
+    }
+    const drift = compareToIssueBody(target, await readFile(bodyFile, 'utf8'));
+    if (drift.onlyInIssue.length === 0 && drift.onlyInProof.length === 0) {
+      console.log(`#${target.issue}: proof file matches the issue body.`);
+      return 0;
+    }
+    console.error(`#${target.issue}: proof file and issue body disagree.`);
+    for (const t of drift.onlyInIssue) console.error(`  in the issue, missing from the proof file: ${t}`);
+    for (const t of drift.onlyInProof) console.error(`  in the proof file, missing from the issue: ${t}`);
+    return 1;
   }
   if (cmd === 'ingest') {
     const file = args[1];
@@ -121,24 +160,11 @@ async function main(): Promise<number> {
     return 0;
   }
   if (cmd === 'gate') {
-    const dir = args[1] ?? '.okayd';
-    const ledgers = (await readdir(dir)).filter((n) => n.startsWith('ledger-') && n.endsWith('.json'));
-    if (ledgers.length === 0) {
-      console.error('No ledgers found. Run your tests with the Okayd reporter, or run okayd ingest, first.');
-      return 1;
-    }
-    let ok = true;
-    for (const f of ledgers) {
-      const ledger = JSON.parse(await readFile(join(dir, f), 'utf8'));
-      if (!ledger.proven) {
-        ok = false;
-        console.error(`#${ledger.issue} is not proven`);
-        for (const e of ledger.entries ?? []) {
-          if (e.verdict === 'unproven') console.error(`  ${e.id} UNPROVEN (no assertions): add a real assertion to ${(e.weak ?? []).join(', ') || 'its tagged tests'}`);
-        }
-      }
-    }
-    return ok ? 0 : 1;
+    const dir = positional(args.slice(1), [])[0] ?? '.okayd';
+    const result = await evaluateGate(dir, { allowEmpty: args.includes('--allow-empty') });
+    for (const n of result.notes) console.log(n);
+    for (const p of result.problems) console.error(p);
+    return result.ok ? 0 : 1;
   }
   if (cmd === 'lint') {
     const result = await lintTests({ dir: args[1] ?? '.', tests });
