@@ -28,7 +28,11 @@ async function main(): Promise<number> {
       console.error(`Name the JUnit XML file to read. ${USAGE}`);
       return 2;
     }
-    const { lines } = await finalize(parseJUnit(await readFile(file, 'utf8')), { dir: args[2] ?? '.okayd' });
+    const { lines } = await finalize(parseJUnit(await readFile(file, 'utf8')), {
+      dir: args[2] ?? '.okayd',
+      // The GitHub Action sets this when its `comment` input is false.
+      github: process.env.OKAYD_NO_COMMENT !== '1',
+    });
     for (const line of lines) console.log(line);
     return 0;
   }

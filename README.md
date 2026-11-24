@@ -63,6 +63,46 @@ that reruns update. Give the job `pull-requests: write`, or pass
 `npx okayd gate` exits 1 unless every criterion is met. Make it a required
 check.
 
+## GitHub Action
+
+Okayd ships as a composite action. Run your tests so they write JUnit XML, then
+call it:
+
+```yaml
+name: Okayd
+on: pull_request
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # lets Okayd post and update its one PR comment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx vitest run --reporter=junit --outputFile=junit.xml
+      - id: okayd
+        uses: rudr19/okayd@v0
+        with:
+          results: junit.xml
+      - run: echo "proven=${{ steps.okayd.outputs.proven }}"
+```
+
+Inputs: `results` (JUnit XML path, optional), `dir` (default `.okayd`),
+`gate` (default `true`, fail unless proven), `comment` (default `true`),
+`node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
+Set `comment: false` to skip the PR comment and job summary (for forks, or
+when you only want the gate). The CLI honours the same switch as
+`OKAYD_NO_COMMENT=1`.
+
+Releases are tagged `v0.x`, and a moving `v0` tag points at the latest one.
+Pin `@v0` to follow it, or a full `v0.x.y` tag to hold still.
+
 ## Roadmap
 
 - [x] Proof files, ledger, merge gate
