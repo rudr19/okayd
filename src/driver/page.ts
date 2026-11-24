@@ -100,6 +100,11 @@ export class Page {
     return this.cdp.send<T>(method, params, this.sessionId);
   }
 
+  /** Raw DevTools Protocol command on this page's session, for things the driver has no method for (cookies, headers, ...). */
+  command<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    return this.send<T>(method, params);
+  }
+
   async goto(url: string, opts: { timeoutMs?: number } = {}): Promise<void> {
     const timeoutMs = opts.timeoutMs ?? 30000;
     await this.send('Page.enable');

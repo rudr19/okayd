@@ -30,6 +30,10 @@ inputs:
     description: 'Keep proof files in step with the issue. "off" skips it; "check" fails if a proof file differs from its issue; "write" rewrites proof files in the workspace only (committing them is up to your workflow).'
     required: false
     default: check
+  require-linked:
+    description: 'Fail the gate when a linked issue ("Closes #N" in the PR body, or the issue input) has no proof file named for it. "true" or "false". Set false only if your PRs close issues okproof does not track.'
+    required: false
+    default: 'true'
   node-version:
     description: Node.js version used to run okproof.
     required: false
@@ -68,10 +72,10 @@ runs:
         SYNC: ${{ inputs.sync }}
         ISSUE: ${{ inputs.issue }}
         DIR: ${{ inputs.dir }}
+        REQUIRE_LINKED: ${{ inputs.require-linked }}
       run: |
         case "$SYNC" in
-          off) echo "issues=" >> "$GITHUB_OUTPUT" ;;
-          check|write) node "$GITHUB_ACTION_PATH/scripts/action-linked-issues.mjs" ;;
+          off|check|write) node "$GITHUB_ACTION_PATH/scripts/action-linked-issues.mjs" ;;
           *) echo "sync must be off, check or write, got: $SYNC" >&2; exit 2 ;;
         esac
 
@@ -125,7 +129,18 @@ runs:
       env:
         GATE: ${{ inputs.gate }}
         DIR: ${{ inputs.dir }}
+        RESULTS: ${{ inputs.results }}
+        REQUIRED: ${{ steps.issues.outputs.required }}
       run: |
+        # Gate from the results ingested in THIS job, never from a committed ledger.
+        # Every issue the PR links must have its own proof file.
         if [ "$GATE" = "true" ]; then
-          node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "$DIR"
+          extra=()
+          [ -n "$REQUIRED" ] && extra+=(--require-issues "$REQUIRED")
+          if [ -n "$RESULTS" ]; then
+            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "$DIR"
+          else
+            echo "::warning::okproof: No results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
+            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "${extra[@]}" "$DIR"
+          fi
         fi

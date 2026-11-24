@@ -7,8 +7,10 @@
 //                                 write .okproof/<n>.md from the GitHub issue (or a body file);
 //                                 with --check, change nothing and exit 1 if it would change
 // okproof ingest <file> [dir]       build ledgers from JUnit XML or CTRF JSON (--format junit|ctrf)
-// okproof gate   [dir] [--allow-empty]
-//                                 exit 1 unless every proof file has a fresh, fully met ledger
+// okproof gate   [dir] [--results <file> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty]
+//                                 exit 1 unless every proof file has a fresh, fully met ledger;
+//                                 with --results, ledgers are rebuilt in memory from the test results
+//                                 and committed ledgers are ignored
 // okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
 // okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]
 //                                 scaffold .okproof/, and optionally CI and agent files; never overwrites
@@ -17,17 +19,16 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, compareToIssueBody } from './proof.js';
 import { fetchIssue, syncProofFile, describeSync } from './sync.js';
-import { evaluateGate } from './gate.js';
-import { parseJUnit } from './junit.js';
-import { parseCTRF } from './ctrf.js';
+import { parseResults, runGate, sha256Hex } from './trust.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
@@ -57,14 +58,35 @@ function flags(argv: string[]): Map<string, string | true> {
   return out;
 }
 
+/** --storage-state, --login and every --header 'Name: value'. Throws a message that never repeats a secret. */
+function authFlags(list: string[], str: (k: string) => string | undefined): AuthOptions {
+  const headers: Record<string, string> = {};
+  for (let i = 0; i < list.length; i++) {
+    const a = list[i]!;
+    const raw = a === '--header' ? list[++i] : a.startsWith('--header=') ? a.slice('--header='.length) : undefined;
+    if (a !== '--header' && !a.startsWith('--header=')) continue;
+    const [name, value] = parseHeader(raw ?? '');
+    headers[name] = value;
+  }
+  return { storageState: str('storage-state'), login: str('login'), ...(Object.keys(headers).length > 0 ? { headers } : {}) };
+}
+
 async function runVerify(): Promise<number> {
   const f = flags(args.slice(1));
   const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  let auth: AuthOptions;
+  try {
+    auth = authFlags(args.slice(1), str);
+    await prepareAuth(auth); // fail on a bad file or login script before anything else
+  } catch (e) {
+    console.error((e as Error).message);
+    return 2;
+  }
   const dir = str('dir') ?? '.okproof';
   const issue = str('issue');
   const url = str('url');
   if (f.get('replay-only') === true) {
-    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME });
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, ...auth });
     if (results.length === 0) {
       console.error(`No repro files in ${dir}/repro. Run okproof verify first.`);
       return 2;
@@ -89,7 +111,7 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {
@@ -268,23 +290,19 @@ async function main(): Promise<number> {
       return 2;
     }
     const text = await readFile(file, 'utf8');
-    const kind = format ?? (file.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{') ? 'ctrf' : 'junit');
-    const outcomes = kind === 'ctrf' ? parseCTRF(text) : parseJUnit(text);
+    const outcomes = parseResults(text, file, format);
     const { lines } = await finalize(outcomes, {
       dir: args[2] ?? '.okproof',
       // The GitHub Action sets this when its `comment` input is false.
       github: process.env.OKPROOF_NO_COMMENT !== '1',
       strictAssertions,
+      resultsSha256: sha256Hex(text),
     });
     for (const line of lines) console.log(line);
     return 0;
   }
   if (cmd === 'gate') {
-    const dir = positional(args.slice(1), [])[0] ?? '.okproof';
-    const result = await evaluateGate(dir, { allowEmpty: args.includes('--allow-empty') });
-    for (const n of result.notes) console.log(n);
-    for (const p of result.problems) console.error(p);
-    return result.ok ? 0 : 1;
+    return runGate(args.slice(1), { format, strictAssertions });
   }
   if (cmd === 'lint') {
     const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance });

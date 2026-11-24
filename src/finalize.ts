@@ -6,6 +6,7 @@ import { parseProof } from './proof.js';
 import { buildLedger, renderLedgerMarkdown, type Ledger, type TestOutcome } from './ledger.js';
 import { publishToGitHub } from './github.js';
 import { evaluateGate } from './gate.js';
+import { sha256Hex } from './trust.js';
 import { applyVerifyFile, criteriaHash, readVerifyFile } from './verify/ledger.js';
 
 export interface FinalizeOptions {
@@ -20,6 +21,8 @@ export interface FinalizeOptions {
    * Default: true only when OKPROOF_STRICT_ASSERTIONS=1.
    */
   strictAssertions?: boolean;
+  /** sha256 of the results file, recorded in each ledger as results_sha256. */
+  resultsSha256?: string;
 }
 
 export interface FinalizeResult {
@@ -37,8 +40,9 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
   const ledgers: Ledger[] = [];
   const lines: string[] = [];
   for (const f of files) {
-    const proof = parseProof(await readFile(join(dir, f), 'utf8'));
-    let ledger = buildLedger(proof, outcomes, { strictAssertions: strict });
+    const proofText = await readFile(join(dir, f), 'utf8');
+    const proof = parseProof(proofText);
+    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: strict }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText) };
     // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified && verified.criteriaHash === criteriaHash(proof)) ledger = applyVerifyFile(ledger, verified);

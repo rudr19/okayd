@@ -10,7 +10,7 @@
 //     next heading of the same or a higher level. Otherwise every checkbox does.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { parseProof } from './proof.js';
+import { parseProof, splitStableId } from './proof.js';
 import { apiBase } from './github.js';
 
 // Same pattern as src/github.ts (owner/name as GitHub allows them).
@@ -110,9 +110,25 @@ function cleanTitle(title: string): string {
   return norm(title);
 }
 
-function render(issue: number, title: string, texts: string[]): string {
+interface Item {
+  text: string;
+  /** Stable id from a `{#id}` prefix; kept so rewriting the file never loses it. */
+  stableId?: string;
+}
+
+/** Issue checkbox text as items: a `{#id}` the issue itself carries is adopted. */
+function items(texts: string[]): Item[] {
+  return texts.map((t) => {
+    const { id, text } = splitStableId(t);
+    return id ? { text: norm(text), stableId: id } : { text };
+  });
+}
+
+function render(issue: number, title: string, list: Item[]): string {
   const head = `## #${issue}${title ? ` ${title}` : ''}`;
-  return [head, ...texts.map((t) => `- [ ] ${t}`)].join('\n') + '\n';
+  const out = [head, ...list.map((t) => `- [ ] ${t.stableId ? `{#${t.stableId}} ` : ''}${t.text}`)].join('\n') + '\n';
+  parseProof(out); // refuses duplicate or invalid ids before anything is written
+  return out;
 }
 
 /** Renders a proof file for an issue. Throws if the issue lists no criteria. */
@@ -120,7 +136,7 @@ export function proofFromIssue(input: { issue: number; title: string; body: stri
   assertIssue(input.issue);
   const texts = issueCriteria(input.body ?? '');
   if (texts.length === 0) throw new Error(noCriteria(input.issue));
-  return render(input.issue, cleanTitle(input.title ?? ''), texts);
+  return render(input.issue, cleanTitle(input.title ?? ''), items(texts));
 }
 
 function noCriteria(issue: number): string {
@@ -174,8 +190,9 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
   }
   const path = join(dir, `${opts.issue}.md`);
   const title = cleanTitle(opts.title ?? '');
-  const wanted = issueCriteria(opts.body ?? '');
-  if (wanted.length === 0) throw new Error(noCriteria(opts.issue));
+  const wantedTexts = issueCriteria(opts.body ?? '');
+  if (wantedTexts.length === 0) throw new Error(noCriteria(opts.issue));
+  const wanted = items(wantedTexts);
 
   let existing: string | undefined;
   try {
@@ -184,7 +201,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
   }
 
-  const old: Array<{ text: string; index: number }> = [];
+  const old: Array<{ text: string; index: number; stableId?: string }> = [];
   let oldTitle = '';
   if (existing !== undefined) {
     try {
@@ -193,7 +210,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
         throw new Error(`${path} describes issue #${proof.issue}, not #${opts.issue}.`);
       }
       oldTitle = norm(proof.title);
-      for (const c of proof.criteria) old.push({ text: norm(c.text), index: c.index });
+      for (const c of proof.criteria) old.push({ text: norm(c.text), index: c.index, stableId: c.stableId });
     } catch (e) {
       // A file with a heading for another issue is a real conflict; an empty or
       // unparseable one is just rewritten.
@@ -201,29 +218,30 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  const free = wanted.map((text) => ({ text, used: false }));
-  const kept: Array<{ text: string; oldIndex: number }> = [];
-  const removedOld: Array<{ text: string; index: number }> = [];
+  const free = wanted.map((w) => ({ ...w, used: false }));
+  const kept: Array<{ text: string; oldIndex: number; stableId?: string }> = [];
+  const removedOld: Array<{ text: string; index: number; stableId?: string }> = [];
   for (const o of old) {
     const hit = free.find((f) => !f.used && f.text === o.text);
     if (hit) {
       hit.used = true;
-      kept.push({ text: o.text, oldIndex: o.index });
+      kept.push({ text: o.text, oldIndex: o.index, stableId: o.stableId ?? hit.stableId });
     } else removedOld.push(o);
   }
-  const addedTexts = free.filter((f) => !f.used).map((f) => f.text);
+  const added = free.filter((f) => !f.used).map<Item>((f) => ({ text: f.text, ...(f.stableId ? { stableId: f.stableId } : {}) }));
 
-  const id = (n: number): string => `${opts.issue}.${n}`;
-  const finalTexts = [...kept.map((k) => k.text), ...addedTexts];
+  // A stable id is the id; a positional one is the 1-based position.
+  const id = (n: number, stable?: string): string => `${opts.issue}.${stable ?? n}`;
+  const finalItems: Item[] = [...kept.map((k) => ({ text: k.text, ...(k.stableId ? { stableId: k.stableId } : {}) })), ...added];
   const result: SyncResult = {
     path,
     created: existing === undefined,
     changed: false,
-    unchanged: kept.map((k, i) => ({ id: id(i + 1), text: k.text })),
-    added: addedTexts.map((text, i) => ({ id: id(kept.length + i + 1), text })),
-    removed: removedOld.map((o) => ({ id: id(o.index), text: o.text })),
+    unchanged: kept.map((k, i) => ({ id: id(i + 1, k.stableId), text: k.text })),
+    added: added.map((a, i) => ({ id: id(kept.length + i + 1, a.stableId), text: a.text })),
+    removed: removedOld.map((o) => ({ id: id(o.index, o.stableId), text: o.text })),
     renumbered: kept
-      .map((k, i) => ({ text: k.text, from: id(k.oldIndex), to: id(i + 1) }))
+      .map((k, i) => ({ text: k.text, from: id(k.oldIndex, k.stableId), to: id(i + 1, k.stableId) }))
       .filter((r) => r.from !== r.to),
     titleChanged: existing !== undefined && oldTitle !== title,
   };
@@ -231,7 +249,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
 
   if (result.changed && opts.write !== false) {
     await mkdir(dir, { recursive: true });
-    await writeFile(path, render(opts.issue, title, finalTexts));
+    await writeFile(path, render(opts.issue, title, finalItems));
   }
   return result;
 }

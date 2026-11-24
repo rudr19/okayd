@@ -12,6 +12,8 @@ export interface GateOptions {
   allowEmpty?: boolean;
   /** Only check this issue (its proof file, ledger and verifier file). */
   issue?: string;
+  /** Ledgers rebuilt in memory from this job's test results (trust.ts). When set, committed ledgers are ignored. */
+  ledgers?: Ledger[];
 }
 
 export interface GateResult {
@@ -106,9 +108,14 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     if (v.problem) problems.push(v.problem);
     if (v.note) notes.push(v.note);
 
+    const injected = options.ledgers?.find((l) => l.issue === proof.issue);
+    if (options.ledgers && !injected) {
+      problems.push(`#${proof.issue} has no ledger rebuilt from the test results.`);
+      continue;
+    }
     let ledger: Ledger;
     try {
-      ledger = JSON.parse(await readFile(join(dir, `ledger-${proof.issue}.json`), 'utf8')) as Ledger;
+      ledger = injected ?? (JSON.parse(await readFile(join(dir, `ledger-${proof.issue}.json`), 'utf8')) as Ledger);
     } catch (e) {
       const missing = (e as NodeJS.ErrnoException).code === 'ENOENT';
       problems.push(
@@ -142,7 +149,7 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
   }
 
   // A ledger with no proof file means a proof file was deleted.
-  for (const f of ledgerFiles) {
+  for (const f of options.ledgers ? [] : ledgerFiles) {
     const issue = f.slice('ledger-'.length, -'.json'.length);
     if (!seen.has(issue) && !proofFiles.some((p) => p === `${issue}.md`)) {
       problems.push(`#${issue} has a ledger but no proof file. If the proof file was deleted on purpose, delete ${f} too.`);

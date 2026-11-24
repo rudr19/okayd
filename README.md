@@ -121,6 +121,9 @@ test('member upgrades to Pro [okproof:142.1] [okproof:142.2]', async ({ page }) 
 });
 ```
 
+Ids are positional by default. To keep a tag valid when criteria are reordered,
+give a criterion a stable id with a `{#id}` prefix; see [docs/stable-ids.md](docs/stable-ids.md).
+
 ## 3. Build the ledger
 
 **Playwright Test**: add the reporter.
@@ -164,6 +167,12 @@ that reruns update. Give the job `pull-requests: write`, or pass
 check. The gate re-reads the proof files, so a stale ledger, a missing ledger or
 stale verifier results fail it; the Action's `proven` output, the PR comment and
 the MCP `okproof_status` verdict all use the same function.
+
+A committed ledger is only a claim, so in CI gate from the job's own results:
+`npx okproof gate --results junit.xml --require-issues 142,143` rebuilds the
+ledgers in memory and ignores committed ones (the Action does this when its
+`results` input is set). Do not commit `.okproof/ledger-*`. See
+[docs/trust.md](docs/trust.md).
 
 ### Protect `.okproof/` with CODEOWNERS
 
@@ -379,7 +388,9 @@ npx okproof verify --url https://preview.example.com --issue 142
 ```
 
 Options: `--dir .okproof`, `--max-steps 15`, `--model claude-opus-5-5`,
-`--effort medium`. It writes:
+`--effort medium`. For an app behind a login use `--storage-state <file>`,
+`--header 'Name: value'` or `--login <script.mjs>`; `--strict-detectors` turns off
+per-detector attribution of findings (see [docs/trust.md](docs/trust.md)). It writes:
 
 - `.okproof/verify-<issue>.json`: a verdict per criterion (`refuted`, `held` or
   `inconclusive`), findings, and the recorded actions
@@ -405,7 +416,7 @@ criterion. Unnamed controls and overflow are severity 2: reported, not failing.
 `new AnthropicModel({ apiKey })` or `OKPROOF_ANTHROPIC_API_KEY`. It never falls
 back to `ANTHROPIC_API_KEY`, auth tokens or CLI profiles, so you choose which
 account pays. Without a key, `okproof verify` exits 2. `@anthropic-ai/sdk` is an
-optional peer dependency, loaded only when used: `npm i @anthropic-ai/sdk`. The
+optional peer dependency (`>=1.0.0 <2.0.0`), loaded only when used: `npm i @anthropic-ai/sdk`. The
 core stays dependency free, and any `ModelClient` works:
 
 ```ts
