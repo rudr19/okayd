@@ -1,0 +1,91 @@
+name: Okayd
+description: Prove a pull request meets its acceptance criteria, criterion by criterion.
+author: rudr19
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  results:
+    description: Path to a JUnit XML file from your test run. Optional if ledgers were already written by the Okayd reporter.
+    required: false
+    default: ''
+  dir:
+    description: Folder holding the proof files and ledgers.
+    required: false
+    default: .okayd
+  gate:
+    description: Fail the step unless every criterion is proven. "true" or "false".
+    required: false
+    default: 'true'
+  comment:
+    description: Post the ledger as a pull request comment and job summary. "true" or "false".
+    required: false
+    default: 'true'
+  node-version:
+    description: Node.js version used to run Okayd.
+    required: false
+    default: '22'
+  github-token:
+    description: Token used to post the pull request comment. The job needs pull-requests write permission.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  proven:
+    description: '"true" if every ledger is proven, otherwise "false".'
+    value: ${{ steps.outputs.outputs.proven }}
+  summary:
+    description: One line per proof file, for example "okayd #142: 4/4 criteria met, proven".
+    value: ${{ steps.outputs.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install Okayd
+      shell: bash
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        npm ci --ignore-scripts --no-audit --no-fund
+        npm run build
+
+    - name: Check proof files
+      shell: bash
+      env:
+        DIR: ${{ inputs.dir }}
+      run: node "$GITHUB_ACTION_PATH/dist/src/cli.js" check "$DIR"
+
+    - name: Build ledgers from JUnit XML
+      shell: bash
+      env:
+        RESULTS: ${{ inputs.results }}
+        DIR: ${{ inputs.dir }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        OKAYD_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
+      run: |
+        if [ -n "$RESULTS" ]; then
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR"
+        else
+          echo "No results input; using ledgers already in $DIR."
+        fi
+
+    - name: Set outputs
+      id: outputs
+      shell: bash
+      env:
+        DIR: ${{ inputs.dir }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-outputs.mjs"
+
+    - name: Gate
+      shell: bash
+      env:
+        GATE: ${{ inputs.gate }}
+        DIR: ${{ inputs.dir }}
+      run: |
+        if [ "$GATE" = "true" ]; then
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "$DIR"
+        fi

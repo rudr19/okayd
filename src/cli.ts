@@ -45,7 +45,11 @@ async function main(): Promise<number> {
     const text = await readFile(file, 'utf8');
     const kind = format ?? (file.toLowerCase().endsWith('.json') || text.trimStart().startsWith('{') ? 'ctrf' : 'junit');
     const outcomes = kind === 'ctrf' ? parseCTRF(text) : parseJUnit(text);
-    const { lines } = await finalize(outcomes, { dir: args[2] ?? '.okayd' });
+    const { lines } = await finalize(outcomes, {
+      dir: args[2] ?? '.okayd',
+      // The GitHub Action sets this when its `comment` input is false.
+      github: process.env.OKAYD_NO_COMMENT !== '1',
+    });
     for (const line of lines) console.log(line);
     return 0;
   }
