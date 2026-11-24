@@ -46,6 +46,28 @@ export async function pullRequestNumber(env: GitHubEnv): Promise<number | undefi
   return m ? Number(m[1]) : undefined;
 }
 
+/** owner/name as GitHub allows them. */
+const REPO = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+
+/** GitHub rejects comments over 65,536 characters; stay under it. */
+export const MAX_COMMENT_CHARS = 60_000;
+
+export function capBody(body: string): string {
+  if (body.length <= MAX_COMMENT_CHARS) return body;
+  return body.slice(0, MAX_COMMENT_CHARS) + '\n\n_Ledger truncated. See the job summary or `.okayd/ledger-*.md` for the full table._\n';
+}
+
+/** The API origin: https only, no credentials, query or fragment. */
+export function apiBase(raw: string | undefined): string | undefined {
+  try {
+    const url = new URL(raw || 'https://api.github.com');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return undefined;
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return undefined;
+  }
+}
+
 export async function publishToGitHub(
   ledgers: Ledger[],
   env: GitHubEnv = process.env as GitHubEnv,
@@ -54,7 +76,7 @@ export async function publishToGitHub(
   if (env.GITHUB_ACTIONS !== 'true') {
     return { summary: false, comment: 'skipped', reason: 'not running in GitHub Actions' };
   }
-  const body = renderComment(ledgers);
+  const body = capBody(renderComment(ledgers));
 
   let summary = false;
   if (env.GITHUB_STEP_SUMMARY) {
@@ -64,12 +86,16 @@ export async function publishToGitHub(
 
   const token = env.GITHUB_TOKEN || env.GH_TOKEN;
   if (!token) return { summary, comment: 'skipped', reason: 'no GITHUB_TOKEN' };
-  if (!env.GITHUB_REPOSITORY) return { summary, comment: 'skipped', reason: 'no GITHUB_REPOSITORY' };
+
+  // Everything that shapes the request URL is validated, so values read from
+  // the environment or the event file can't redirect it.
+  const repo = env.GITHUB_REPOSITORY ?? '';
+  if (!REPO.test(repo)) return { summary, comment: 'skipped', reason: 'invalid or missing GITHUB_REPOSITORY' };
   const pr = await pullRequestNumber(env);
   if (!pr) return { summary, comment: 'skipped', reason: 'not a pull request' };
-
-  const api = (env.GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, '');
-  const base = `${api}/repos/${env.GITHUB_REPOSITORY}/issues`;
+  const api = apiBase(env.GITHUB_API_URL);
+  if (!api) return { summary, comment: 'skipped', reason: 'GITHUB_API_URL must be an https URL' };
+  const base = `${api}/repos/${repo}/issues`;
   const headers = {
     authorization: `Bearer ${token}`,
     accept: 'application/vnd.github+json',
@@ -80,7 +106,7 @@ export async function publishToGitHub(
   const list = await fetchImpl(`${base}/${pr}/comments?per_page=100`, { headers });
   if (!list.ok) return { summary, comment: 'skipped', reason: `listing comments failed (${list.status})` };
   const comments = (await list.json()) as Array<{ id: number; body?: string }>;
-  const mine = comments.find((c) => c.body?.startsWith(COMMENT_MARKER));
+  const mine = comments.find((c) => Number.isSafeInteger(c.id) && c.id > 0 && c.body?.startsWith(COMMENT_MARKER));
 
   const res = mine
     ? await fetchImpl(`${base}/comments/${mine.id}`, { method: 'PATCH', headers, body: JSON.stringify({ body }) })

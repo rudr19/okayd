@@ -2,6 +2,7 @@
 // okayd check  [dir]              validate proof files and print each criterion's tag
 // okayd ingest <junit.xml> [dir]  build ledgers from any runner's JUnit XML
 // okayd gate   [dir]              exit 1 unless every written ledger is proven
+// okayd mcp                       serve Okayd to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof } from './proof.js';
@@ -9,8 +10,9 @@ import { parseJUnit } from './junit.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { startMcpServer } from './mcp/server.js';
 
-const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml> [dir] | okayd gate [dir] | okayd verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml> [dir] | okayd gate [dir] | okayd mcp | okayd verify --url <baseUrl> [options]';
 const args = process.argv.slice(2);
 
 // okayd verify --url <baseUrl> [--issue N] [--dir .okayd] [--max-steps 15] [--model id] [--effort e] [--replay-only]
@@ -107,6 +109,10 @@ async function main(): Promise<number> {
       }
     }
     return ok ? 0 : 1;
+  }
+  if (cmd === 'mcp') {
+    await startMcpServer(process.stdin, process.stdout);
+    return 0;
   }
   if (cmd === 'verify') return runVerify();
   console.error(`Unknown command "${cmd}". ${USAGE}`);
