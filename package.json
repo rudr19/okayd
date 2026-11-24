@@ -10,7 +10,7 @@
   "files": ["dist/src", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p .",
-    "test": "npm run build && node --test dist/test/",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
     "check": "node dist/src/cli.js check"
   },
   "peerDependencies": { "e2e": ">=0.24.0" },
