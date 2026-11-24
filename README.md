@@ -43,14 +43,17 @@ export default {
 };
 ```
 
-Each run writes `.okayd/ledger-<issue>.json` and `.md`.
+Each run writes `.okayd/ledger-<issue>.json` and `.md`. In GitHub Actions it also
+writes the ledger to the job summary and posts it as one pull request comment
+that reruns update. Give the job `pull-requests: write`, or pass
+`okayd({ github: false })` to turn this off.
 `npx okayd gate` exits 1 unless every criterion is met. Use it as a required
 CI check.
 
 ## Roadmap
 
 - [x] Proof files, ledger, e2e reporter, merge gate
-- [ ] GitHub check run with the ledger table and evidence links
+- [x] Ledger posted as one PR comment (updated on reruns) and in the job summary
 - [ ] Verifier agent that attacks each criterion on the preview deployment
 - [ ] "Harden": commit passing agent replays as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
