@@ -19,7 +19,16 @@ const REPO = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
 // Greedy single captures, with trimming done in code: no lazy group next to an
 // optional whitespace run, which CodeQL flags as polynomial (js/polynomial-redos).
 const ITEM_RE = /^\s*[-*]\s+\[[ xX]\]\s+(\S.*)$/;
-const HEADING_RE = /^ {0,3}(#{1,6})[ \t]+(.*)$/;
+/** An ATX heading ("## Title"), parsed without a regex: up to 3 leading spaces, 1-6 hashes, then a space or tab. */
+function parseHeading(line: string): [string, string, string] | null {
+  let i = 0;
+  while (i < 3 && line[i] === ' ') i++;
+  const start = i;
+  while (line[i] === '#' && i - start < 7) i++;
+  const level = i - start;
+  if (level < 1 || level > 6 || (line[i] !== ' ' && line[i] !== '\t')) return null;
+  return [line, line.slice(start, i), line.slice(i).trim()];
+}
 
 const ITEM = {
   exec(line: string): [string, string] | null {
@@ -39,8 +48,8 @@ function headingText(raw: string): string {
 
 const HEADING = {
   exec(line: string): [string, string, string] | null {
-    const m = HEADING_RE.exec(line);
-    return m ? [m[0], m[1]!, headingText(m[2]!)] : null;
+    const m = parseHeading(line);
+    return m ? [m[0], m[1], headingText(m[2])] : null;
   },
 };
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
