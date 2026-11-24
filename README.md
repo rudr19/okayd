@@ -2,6 +2,12 @@
 
 **Your agent says it's done. Okayd proves it, criterion by criterion.**
 
+[![CI](https://github.com/rudr19/okayd/actions/workflows/ci.yml/badge.svg)](https://github.com/rudr19/okayd/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rudr19/okayd/actions/workflows/codeql.yml/badge.svg)](https://github.com/rudr19/okayd/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rudr19/okayd/badge)](https://scorecard.dev/viewer/?uri=github.com/rudr19/okayd)
+[![npm version](https://img.shields.io/npm/v/okayd.svg)](https://www.npmjs.com/package/okayd)
+[![License](https://img.shields.io/github/license/rudr19/okayd.svg)](LICENSE)
+
 > Browser agents act. Test frameworks run. CI reports. **Okayd proves.**
 > [Why Okayd](WHY-OKAYD.md) · [Vision](VISION.md) · [Roadmap](ROADMAP.md) · [Governance](GOVERNANCE.md) · [Security](SECURITY.md)
 
@@ -13,6 +19,17 @@ run ends with a ledger that marks each criterion **met**, **failed** or
 Okayd doesn't run your tests. It works with **Playwright Test** directly, and
 with **any runner that writes JUnit XML**: Jest, Vitest, pytest, JUnit,
 Cypress, Go and more. It has no runtime dependencies.
+
+## Install
+
+```bash
+npm i -D okayd
+npx okayd check
+```
+
+Okayd has no runtime dependencies. The core (proof files, ledger, gate,
+ingest, MCP server, Playwright reporter) runs on Node 20 or later. The browser
+driver and the verifier use Node's built-in WebSocket and need Node 22 or later.
 
 ## See it in action
 

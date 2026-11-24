@@ -1,8 +1,17 @@
 {
   "name": "okayd",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Prove agent-written pull requests against their acceptance criteria. Works with Playwright Test or any runner that writes JUnit XML.",
   "license": "Apache-2.0",
+  "author": "Rudra Kumar Pandey",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rudr19/okayd.git"
+  },
+  "homepage": "https://github.com/rudr19/okayd#readme",
+  "bugs": {
+    "url": "https://github.com/rudr19/okayd/issues"
+  },
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -11,15 +20,19 @@
   },
   "files": [
     "dist/src",
+    "skills",
     "README.md",
     "LICENSE",
-    "skills"
+    "NOTICE",
+    "TRADEMARK.md"
   ],
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p .",
     "test": "npm run build && node scripts/test.mjs",
     "check": "node dist/src/cli.js check",
-    "demo": "npm run build && node examples/demo/run-demo.mjs"
+    "demo": "npm run build && node examples/demo/run-demo.mjs",
+    "smoke": "node scripts/pack-smoke.mjs",
+    "prepublishOnly": "npm test"
   },
   "devDependencies": {
     "typescript": "5.6.3",
@@ -61,5 +74,9 @@
     "@anthropic-ai/sdk": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
