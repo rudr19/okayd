@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { parseProof } from './proof.js';
 import { buildLedger, renderLedgerMarkdown, type Ledger, type TestOutcome } from './ledger.js';
 import { publishToGitHub } from './github.js';
-import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
+import { evaluateGate } from './gate.js';
+import { applyVerifyFile, criteriaHash, readVerifyFile } from './verify/ledger.js';
 
 export interface FinalizeOptions {
   /** Folder holding proof files. Default ".okproof". */
@@ -36,10 +37,12 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
   const ledgers: Ledger[] = [];
   const lines: string[] = [];
   for (const f of files) {
-    let ledger = buildLedger(parseProof(await readFile(join(dir, f), 'utf8')), outcomes, { strictAssertions: strict });
+    const proof = parseProof(await readFile(join(dir, f), 'utf8'));
+    let ledger = buildLedger(proof, outcomes, { strictAssertions: strict });
     // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
     const verified = await readVerifyFile(dir, ledger.issue);
-    if (verified) ledger = applyVerifyFile(ledger, verified);
+    if (verified && verified.criteriaHash === criteriaHash(proof)) ledger = applyVerifyFile(ledger, verified);
+    else if (verified) lines.push(`okproof #${ledger.issue}: verifier results are stale; re-run okproof verify or delete verify-${ledger.issue}.json (okproof gate will fail until then)`);
     ledgers.push(ledger);
     await writeFile(join(dir, `ledger-${ledger.issue}.json`), JSON.stringify(ledger, null, 2));
     await writeFile(join(dir, `ledger-${ledger.issue}.md`), renderLedgerMarkdown(ledger));
@@ -49,7 +52,7 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
     lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
   }
   if (options.github !== false && ledgers.length > 0) {
-    const published = await publishToGitHub(ledgers);
+    const published = await publishToGitHub(ledgers, undefined, undefined, await evaluateGate(dir, { issue: options.issue }));
     if (published.comment !== 'skipped') lines.push(`okproof: pull request comment ${published.comment}`);
     else if (published.reason !== 'not running in GitHub Actions') lines.push(`okproof: no PR comment (${published.reason})`);
   }

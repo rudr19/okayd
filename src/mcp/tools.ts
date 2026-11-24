@@ -7,6 +7,7 @@ import { parseJUnit } from '../junit.js';
 import { finalize } from '../finalize.js';
 import { lintTests } from '../lint.js';
 import type { Ledger, LedgerEntry, Verdict } from '../ledger.js';
+import { evaluateGate, staleness } from '../gate.js';
 
 export interface ToolContext {
   cwd: string;
@@ -190,6 +191,8 @@ const okproof_status: ToolDefinition = {
     const proofs = await loadProofs(abs, shown, issue);
     if (proofs.length === 0) return `Not done: no proof files in ${shown}, so nothing is proven. Add criteria with okproof_add_criterion.`;
 
+    // The verdict is the same function `okproof gate` runs; the rows below are detail.
+    const gate = await evaluateGate(abs, { issue });
     const warnings: string[] = [];
     const body: string[] = [];
     const next: string[] = [];
@@ -203,7 +206,12 @@ const okproof_status: ToolDefinition = {
         warnings.push(`${shown}/${p.file} cannot be read: ${p.error}`);
         continue;
       }
-      const { ledger, mtimeMs } = await readLedger(abs, p.proof.issue, warnings);
+      let { ledger, mtimeMs } = await readLedger(abs, p.proof.issue, warnings);
+      const stale = ledger ? staleness(p.proof, ledger) : undefined;
+      if (stale) {
+        warnings.push(stale);
+        ledger = undefined; // a stale ledger proves nothing
+      }
       if (ledger && mtimeMs !== undefined && p.mtimeMs > mtimeMs) {
         warnings.push(
           `#${p.proof.issue}: ${shown}/${p.file} is newer than its ledger, so the ledger may be out of date. Re-run the tests with the okproof reporter or \`okproof ingest\`.`,
@@ -231,10 +239,15 @@ const okproof_status: ToolDefinition = {
       body.push('');
     }
 
-    const done = total > 0 && met === total && broken === 0;
+    const done = total > 0 && met === total && broken === 0 && gate.ok;
     const head = done
       ? 'Done: every criterion proven.'
-      : `Not done: ${met} of ${total} criteria proven${broken ? ` (${broken} proof file${broken > 1 ? 's' : ''} unreadable)` : ''}.`;
+      : met === total && total > 0 && broken === 0
+        ? `Not done: ${met} of ${total} criteria proven, but okproof gate fails (see below).`
+        : `Not done: ${met} of ${total} criteria proven${broken ? ` (${broken} proof file${broken > 1 ? 's' : ''} unreadable)` : ''}.`;
+    for (const problem of gate.problems) {
+      if (!problem.includes(' criterion ') && !warnings.includes(problem)) warnings.push(problem);
+    }
     const out = [head, '', ...body];
     if (warnings.length) out.push('Warnings:', ...warnings.map((w) => `- ${w}`), '');
     if (next.length) out.push('Next steps:', ...next.map((n) => `- ${n}`));

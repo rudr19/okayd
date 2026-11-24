@@ -30,6 +30,8 @@ export interface VerifyFile {
   issue: string;
   title: string;
   baseUrl: string;
+  /** Hash of the proof file's criteria (id and text) when this was written. */
+  criteriaHash?: string;
   results: VerifyResult[];
 }
 

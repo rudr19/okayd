@@ -9,6 +9,8 @@ import { finalize } from '../src/finalize.js';
 import { ScriptedModel, type ScriptedStep } from '../src/verify/model.js';
 import { verifyCriterion } from '../src/verify/agent.js';
 import { verify } from '../src/verify/run.js';
+import { criteriaHash } from '../src/verify/ledger.js';
+import { parseProof } from '../src/proof.js';
 import type { ReproFile, VerifyFile } from '../src/verify/types.js';
 import { refOf, skip, startApp } from './verify-fixture.js';
 
@@ -172,6 +174,7 @@ test('finalize leaves the ledger alone when there is no verifier file, and ignor
       issue: '7',
       title: 'Notes',
       baseUrl: 'http://x',
+      criteriaHash: criteriaHash(parseProof(await readFile(join(dir, '7.md'), 'utf8'))),
       results: [{ criterionId: '7.1', criterion: 'x', verdict: 'held', outcome: 'concluded', findings: [], actions: [], screenshots: [], steps: 1, usage: { input: 0, output: 0 } }],
     };
     await writeFile(join(dir, 'verify-7.json'), JSON.stringify(file));

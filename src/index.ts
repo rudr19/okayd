@@ -1,4 +1,4 @@
-export { parseProof, claimedCriteria, type Criterion, type ProofFile } from './proof.js';
+export { parseProof, claimedCriteria, compareToIssueBody, type Criterion, type ProofFile } from './proof.js';
 export { buildLedger, renderLedgerMarkdown, isWeak, verdictLabel, type LedgerOptions, type Ledger, type LedgerEntry, type Verdict, type TestOutcome } from './ledger.js';
 export { finalize, type FinalizeOptions, type FinalizeResult } from './finalize.js';
 export { lintTests, type LintOptions, type LintResult, type LintFinding } from './lint.js';
@@ -12,3 +12,4 @@ export { startMcpServer } from './mcp/server.js';
 export { createProtocol, type Protocol, type ProtocolOptions } from './mcp/protocol.js';
 export { tools as mcpTools, runTool, type ToolDefinition, type ToolContext, type ToolResult } from './mcp/tools.js';
 export { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria, type SyncResult, type SyncOptions, type FetchedIssue } from './sync.js';
+export { evaluateGate, type GateOptions, type GateResult } from './gate.js';

@@ -3,9 +3,16 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import type { ProofFile } from '../proof.js';
 import type { Ledger } from '../ledger.js';
 import { REFUTE_SEVERITY } from './detectors.js';
 import type { VerifyFile } from './types.js';
+
+/** Hash of a proof file's criteria (id and text), so verifier results can be tied to them. */
+export function criteriaHash(proof: ProofFile): string {
+  return createHash('sha256').update(JSON.stringify(proof.criteria.map((c) => [c.id, c.text]))).digest('hex');
+}
 
 export async function readVerifyFile(dir: string, issue: string): Promise<VerifyFile | undefined> {
   let source: string;

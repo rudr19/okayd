@@ -7,6 +7,7 @@ import { parseProof, type Criterion } from '../proof.js';
 import { Browser } from '../driver/index.js';
 import { verifyCriterion, type AgentResult } from './agent.js';
 import { findingKey, REFUTE_SEVERITY } from './detectors.js';
+import { criteriaHash } from './ledger.js';
 import type { ModelClient } from './model.js';
 import { replay, type ReplayResult } from './replay.js';
 import type { ReproFile, ResultFinding, VerifyFile, VerifyResult } from './types.js';
@@ -153,7 +154,7 @@ export async function verify(o: VerifyOptions): Promise<VerifyRun[]> {
       results.push(r);
     }
     const file = join(dir, `verify-${proof.issue}.json`);
-    const body: VerifyFile = { issue: proof.issue, title: proof.title, baseUrl: o.baseUrl, results };
+    const body: VerifyFile = { issue: proof.issue, title: proof.title, baseUrl: o.baseUrl, criteriaHash: criteriaHash(proof), results };
     await writeFile(file, JSON.stringify(body, null, 2));
     runs.push({ issue: proof.issue, file: slash(file), results });
   }

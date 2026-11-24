@@ -2,6 +2,7 @@
 // request comment that is updated in place on reruns.
 import { appendFile, readFile } from 'node:fs/promises';
 import { renderLedgerMarkdown, type Ledger } from './ledger.js';
+import type { GateResult } from './gate.js';
 
 /** Hidden marker a rerun uses to find and update its own comment. */
 export const COMMENT_MARKER = '<!-- okproof-ledger -->';
@@ -23,16 +24,22 @@ export interface PublishResult {
   reason?: string;
 }
 
-export function renderComment(ledgers: Ledger[]): string {
-  const proven = ledgers.every((l) => l.proven);
+/**
+ * The headline comes from the gate result when given (the proof files are the
+ * source of truth, so a stale ledger is never "proven"). Without one it is
+ * recomputed from the entries, never read from `ledger.proven`.
+ */
+export function renderComment(ledgers: Ledger[], gate?: Pick<GateResult, 'ok' | 'problems'>): string {
+  const proven = gate ? gate.ok : ledgers.every((l) => l.entries.length > 0 && l.entries.every((e) => e.verdict === 'met'));
   const head = proven
     ? '## okproof: every criterion proven'
     : '## okproof: not proven yet';
+  const why = gate && !gate.ok && gate.problems.length ? ['', ...gate.problems.map((p) => `- ${p}`)] : [];
   const unproven = ledgers.flatMap((l) => l.entries.filter((e) => e.verdict === 'unproven').map((e) => `#${l.issue} ${e.id}`));
   const note = unproven.length
     ? ['', `Silence is not proof: ${unproven.join(', ')} only passed tests that made no assertions. Add a real assertion to each tagged test.`]
     : [];
-  return [COMMENT_MARKER, head, ...note, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
+  return [COMMENT_MARKER, head, ...why, ...note, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
 }
 
 /** The pull request number from the event payload, or from refs/pull/N/merge. */
@@ -72,20 +79,28 @@ export function apiBase(raw: string | undefined): string | undefined {
   }
 }
 
+/** Up to this many pages of 100 comments are searched for our marker. */
+const MAX_PAGES = 10;
+
 export async function publishToGitHub(
   ledgers: Ledger[],
   env: GitHubEnv = process.env as GitHubEnv,
   fetchImpl: typeof fetch = fetch,
+  gate?: Pick<GateResult, 'ok' | 'problems'>,
 ): Promise<PublishResult> {
   if (env.GITHUB_ACTIONS !== 'true') {
     return { summary: false, comment: 'skipped', reason: 'not running in GitHub Actions' };
   }
-  const body = capBody(renderComment(ledgers));
+  const body = capBody(renderComment(ledgers, gate));
 
   let summary = false;
   if (env.GITHUB_STEP_SUMMARY) {
-    await appendFile(env.GITHUB_STEP_SUMMARY, body.replace(COMMENT_MARKER + '\n', '') + '\n');
-    summary = true;
+    try {
+      await appendFile(env.GITHUB_STEP_SUMMARY, body.replace(COMMENT_MARKER + '\n', '') + '\n');
+      summary = true;
+    } catch (e) {
+      return { summary, comment: 'skipped', reason: `writing the job summary failed (${(e as Error).message})` };
+    }
   }
 
   const token = env.GITHUB_TOKEN || env.GH_TOKEN;
@@ -107,17 +122,26 @@ export async function publishToGitHub(
     'x-github-api-version': '2022-11-28',
   };
 
-  const list = await fetchImpl(`${base}/${pr}/comments?per_page=100`, { headers });
-  if (!list.ok) return { summary, comment: 'skipped', reason: `listing comments failed (${list.status})` };
-  const comments = (await list.json()) as Array<{ id: number; body?: string }>;
-  const mine = comments.find((c) => Number.isSafeInteger(c.id) && c.id > 0 && c.body?.startsWith(COMMENT_MARKER));
+  // A network failure must not fail the run: the ledger is already written.
+  try {
+    let mine: { id: number } | undefined;
+    for (let page = 1; page <= MAX_PAGES && !mine; page++) {
+      const list = await fetchImpl(`${base}/${pr}/comments?per_page=100&page=${page}`, { headers });
+      if (!list.ok) return { summary, comment: 'skipped', reason: `listing comments failed (${list.status})` };
+      const comments = (await list.json()) as Array<{ id: number; body?: string }>;
+      mine = comments.find((c) => Number.isSafeInteger(c.id) && c.id > 0 && c.body?.startsWith(COMMENT_MARKER));
+      if (comments.length < 100) break;
+    }
 
-  const res = mine
-    ? await fetchImpl(`${base}/comments/${mine.id}`, { method: 'PATCH', headers, body: JSON.stringify({ body }) })
-    : await fetchImpl(`${base}/${pr}/comments`, { method: 'POST', headers, body: JSON.stringify({ body }) });
-  if (!res.ok) {
-    // A fork's pull_request token is read-only: say so instead of failing the run.
-    return { summary, comment: 'skipped', reason: `posting the comment failed (${res.status})` };
+    const res = mine
+      ? await fetchImpl(`${base}/comments/${mine.id}`, { method: 'PATCH', headers, body: JSON.stringify({ body }) })
+      : await fetchImpl(`${base}/${pr}/comments`, { method: 'POST', headers, body: JSON.stringify({ body }) });
+    if (!res.ok) {
+      // A fork's pull_request token is read-only: say so instead of failing the run.
+      return { summary, comment: 'skipped', reason: `posting the comment failed (${res.status})` };
+    }
+    return { summary, comment: mine ? 'updated' : 'created' };
+  } catch (e) {
+    return { summary, comment: 'skipped', reason: `GitHub request failed (${(e as Error).message})` };
   }
-  return { summary, comment: mine ? 'updated' : 'created' };
 }

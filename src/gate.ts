@@ -1,14 +1,17 @@
 // The merge gate. The proof files are the source of truth: a ledger is only a
 // record of one test run, so the gate re-reads every proof file and checks the
 // ledger against it. It never trusts a ledger's own `proven` field.
-import { readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, type ProofFile } from './proof.js';
 import type { Ledger } from './ledger.js';
+import { criteriaHash, readVerifyFile } from './verify/ledger.js';
 
 export interface GateOptions {
   /** Pass when there is nothing to prove (no folder or no proof files). Default false. */
   allowEmpty?: boolean;
+  /** Only check this issue (its proof file, ledger and verifier file). */
+  issue?: string;
 }
 
 export interface GateResult {
@@ -17,6 +20,30 @@ export interface GateResult {
   problems: string[];
   /** One line per proof file that passed or was checked, for the log. */
   notes: string[];
+}
+
+const exists = (p: string) => access(p).then(() => true, () => false);
+
+/** Verifier-file problems for one proof file (stale hash), plus an optional note. */
+async function verifyCheck(dir: string, proof: ProofFile): Promise<{ problem?: string; note?: string }> {
+  let file;
+  try {
+    file = await readVerifyFile(dir, proof.issue);
+  } catch (e) {
+    return { problem: `#${proof.issue}: ${(e as Error).message}` };
+  }
+  if (file) {
+    if (file.criteriaHash !== criteriaHash(proof)) {
+      return { problem: `#${proof.issue}: verifier results are stale; re-run okproof verify or delete the file (verify-${proof.issue}.json was not written for the current criteria).` };
+    }
+    return {};
+  }
+  for (const c of proof.criteria) {
+    if (await exists(join(dir, 'repro', `${c.id}.json`))) {
+      return { note: `#${proof.issue}: a repro file exists for ${c.id} but verify-${proof.issue}.json is missing; refutations are not being applied. Re-run okproof verify.` };
+    }
+  }
+  return {};
 }
 
 const RERUN = 'Re-run your tests (or okproof ingest) to rebuild the ledger.';
@@ -47,8 +74,9 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
   } catch {
     names = [];
   }
-  const proofFiles = names.filter((n) => n.endsWith('.md') && !n.startsWith('ledger-')).sort();
-  const ledgerFiles = names.filter((n) => n.startsWith('ledger-') && n.endsWith('.json')).sort();
+  const only = options.issue;
+  const proofFiles = names.filter((n) => n.endsWith('.md') && !n.startsWith('ledger-') && (!only || n === `${only}.md`)).sort();
+  const ledgerFiles = names.filter((n) => n.startsWith('ledger-') && n.endsWith('.json') && (!only || n === `ledger-${only}.json`)).sort();
 
   if (proofFiles.length === 0 && ledgerFiles.length === 0) {
     if (options.allowEmpty) return { ok: true, problems, notes: [`No proof files in ${dir}; nothing to prove (--allow-empty).`] };
@@ -73,6 +101,10 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
       continue;
     }
     seen.add(proof.issue);
+
+    const v = await verifyCheck(dir, proof);
+    if (v.problem) problems.push(v.problem);
+    if (v.note) notes.push(v.note);
 
     let ledger: Ledger;
     try {

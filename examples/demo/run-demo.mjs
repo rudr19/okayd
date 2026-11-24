@@ -26,7 +26,7 @@ if (!existsSync(resolve(root, 'dist', 'src', 'cli.js'))) {
 }
 
 const { Browser } = await import('../../dist/src/driver/index.js');
-const { ScriptedModel, verifyOne } = await import('../../dist/src/verify/index.js');
+const { ScriptedModel, verifyOne, criteriaHash } = await import('../../dist/src/verify/index.js');
 const { parseSnapshotRefs } = await import('../../dist/src/verify/index.js');
 const { parseProof } = await import('../../dist/src/proof.js');
 const { startServer } = await import('./app/server.mjs');
@@ -118,7 +118,7 @@ try {
   console.log(`   verdict: ${result.verdict}; ${confirmed.length} finding(s) confirmed by replay; repro: ${result.repro ?? 'none'}`);
   writeFileSync(
     resolve(root, DIR, 'verify-101.json'),
-    JSON.stringify({ issue: proof.issue, title: proof.title, baseUrl: server.url, results: [result] }, null, 2),
+    JSON.stringify({ issue: proof.issue, title: proof.title, baseUrl: server.url, criteriaHash: criteriaHash(proof), results: [result] }, null, 2),
   );
 
   // 3. Ingest the junit file (the verifier's result is folded in), then gate.

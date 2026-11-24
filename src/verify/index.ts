@@ -22,5 +22,5 @@ export { execute, parseSnapshotRefs, normalizeUrl, type Action, type Target } fr
 export { verifyCriterion, SYSTEM_PROMPT, TOOLS, type AgentResult, type Violation, type VerifyCriterionOptions } from './agent.js';
 export { replay, type ReplayResult, type ReplayOptions } from './replay.js';
 export { verify, verifyOne, replayOnly, type VerifyOptions, type VerifyRun, type ReplayOnlyResult } from './run.js';
-export { applyVerifyFile, readVerifyFile } from './ledger.js';
+export { applyVerifyFile, readVerifyFile, criteriaHash } from './ledger.js';
 export type { CriterionVerdict, ReproFile, ResultFinding, VerifyFile, VerifyResult } from './types.js';

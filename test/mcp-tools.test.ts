@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runTool, tools } from '../src/mcp/tools.js';
+import { evaluateGate } from '../src/index.js';
 
 async function project() {
   const cwd = await mkdtemp(join(tmpdir(), 'okproof-mcp-'));
@@ -25,7 +26,7 @@ async function call(cwd: string, name: string, args: Record<string, unknown> = {
 async function writeLedger(cwd: string, verdicts: ('met' | 'failed' | 'untested')[]) {
   const entries = verdicts.map((verdict, i) => ({
     id: `142.${i + 1}`,
-    text: `c${i + 1}`,
+    text: ['Member can upgrade', 'Invoice shows proration', 'Viewer cannot see button', 'Downgrade works'][i],
     verdict,
     tests: verdict === 'untested' ? [] : [{ title: `t [okproof:142.${i + 1}]`, status: verdict === 'met' ? 'passed' : 'failed', evidence: `trace${i + 1}.zip` }],
   }));
@@ -102,11 +103,12 @@ test('okproof_status warns when the proof file is newer than the ledger', async 
   await rm(cwd, { recursive: true, force: true });
 });
 
-test('a criterion added after the ledger counts as untested', async () => {
+test('a criterion added after the ledger makes it stale: nothing counts as proven', async () => {
   const cwd = await project();
   await writeLedger(cwd, ['met', 'met', 'met']); // ledger only knows 3 of 4
   const r = await call(cwd, 'okproof_status');
-  assert.equal(r.text.split('\n')[0], 'Not done: 3 of 4 criteria proven.');
+  assert.equal(r.text.split('\n')[0], 'Not done: 0 of 4 criteria proven.');
+  assert.match(r.text, /STALE/);
   await rm(cwd, { recursive: true, force: true });
 });
 
@@ -167,5 +169,33 @@ test('path traversal is rejected', async () => {
     assert.equal(r.isError, true, `${name} ${JSON.stringify(args)}`);
   }
   assert.equal(existsSync(join(cwd, '..', 'escape')), false);
+  await rm(cwd, { recursive: true, force: true });
+});
+
+test('okproof_status says Not done for a stale ledger whose proven field says true, like the gate', async () => {
+  const cwd = await project();
+  const path = await writeLedger(cwd, ['met', 'met', 'met', 'met']);
+  const ledger = JSON.parse(await readFile(path, 'utf8'));
+  ledger.entries[0].text = 'An old wording of the criterion'; // proof file was edited since
+  ledger.proven = true;
+  await writeFile(path, JSON.stringify(ledger));
+  const old = new Date(Date.now() - 60_000);
+  await utimes(join(cwd, '.okproof', '142.md'), old, old);
+  const r = await call(cwd, 'okproof_status');
+  assert.match(r.text.split('\n')[0]!, /^Not done/);
+  assert.match(r.text, /STALE/);
+  assert.equal((await evaluateGate(join(cwd, '.okproof'))).ok, false);
+  await rm(cwd, { recursive: true, force: true });
+});
+
+test('okproof_status says Not done when verifier results are stale, even with every criterion met', async () => {
+  const cwd = await project();
+  await writeLedger(cwd, ['met', 'met', 'met', 'met']);
+  await writeFile(join(cwd, '.okproof', 'verify-142.json'), JSON.stringify({ issue: '142', title: 't', baseUrl: 'x', criteriaHash: 'old', results: [] }));
+  const old = new Date(Date.now() - 60_000);
+  await utimes(join(cwd, '.okproof', '142.md'), old, old);
+  const r = await call(cwd, 'okproof_status');
+  assert.match(r.text.split('\n')[0]!, /^Not done/);
+  assert.match(r.text, /verifier results are stale/);
   await rm(cwd, { recursive: true, force: true });
 });

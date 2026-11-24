@@ -1,23 +1,22 @@
-// Used by action.yml: writes the `proven` and `summary` outputs from the
-// ledgers in $DIR. Missing or empty ledgers count as not proven.
-import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+// Used by action.yml: writes the `proven` and `summary` outputs. The verdict
+// comes from the same gate function as `okproof gate` (proof files are the
+// source of truth), never from a ledger's own `proven` field, so a stale,
+// missing or unmet ledger is "not proven" here too.
+import { appendFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
+import { evaluateGate } from '../dist/src/gate.js';
 
 const dir = process.env.DIR || '.okproof';
-const lines = [];
 let proven = false;
+const lines = [];
 try {
-  const files = readdirSync(dir).filter((n) => n.startsWith('ledger-') && n.endsWith('.json')).sort();
-  proven = files.length > 0;
-  for (const f of files) {
-    const ledger = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-    const met = ledger.entries.filter((e) => e.verdict === 'met').length;
-    if (!ledger.proven) proven = false;
-    lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met, ${ledger.proven ? 'proven' : 'not proven'}`);
-  }
-} catch {
+  const result = await evaluateGate(dir);
+  proven = result.ok;
+  lines.push(...result.notes.map((n) => `okproof ${n}`), ...result.problems.map((p) => `okproof not proven: ${p}`));
+  if (lines.length === 0) lines.push(proven ? 'okproof: proven' : 'okproof: not proven');
+} catch (e) {
   proven = false;
+  lines.push(`okproof not proven: ${e.message}`);
 }
 const out = process.env.GITHUB_OUTPUT;
 const text = `proven=${proven}\n`;
