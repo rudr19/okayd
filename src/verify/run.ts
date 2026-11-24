@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { parseProof, type Criterion } from '../proof.js';
 import { Browser } from '../driver/index.js';
 import { verifyCriterion, type AgentResult } from './agent.js';
+import { attributeFinding } from './attribution.js';
 import { findingKey, REFUTE_SEVERITY } from './detectors.js';
 import type { ModelClient } from './model.js';
 import { replay, type ReplayResult } from './replay.js';
@@ -23,6 +24,8 @@ export interface VerifyOptions {
   maxSteps?: number;
   budgetTokens?: number;
   checkLinks?: boolean;
+  /** Count every detector finding against the criterion, wherever it came from (the 0.1.0 behaviour). */
+  strictDetectors?: boolean;
   /** Progress lines. */
   log?: (line: string) => void;
 }
@@ -102,10 +105,11 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
         f.kind === 'violation'
           ? agent.violations.some((v) => v.assertIndex === f.step && v.title === f.title && fr.result.assertionFailed.get(v.assertIndex) === true)
           : replayed.has(findingKey(f));
-      findings.push({ ...f, confirmed });
+      findings.push({ ...attributeFinding(f, { baseUrl: o.baseUrl, strict: o.strictDetectors }), confirmed });
     }
-    if (findings.some((f) => f.confirmed)) {
-      const confirmedTitles = new Set(findings.filter((f) => f.confirmed).map((f) => f.title));
+    const counts = (f: ResultFinding): boolean => f.confirmed && !f.downgraded;
+    if (findings.some(counts)) {
+      const confirmedTitles = new Set(findings.filter(counts).map((f) => f.title));
       const file: ReproFile = {
         version: 1,
         criterionId: criterion.id,
@@ -113,7 +117,7 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
         ...(o.checkLinks ? { checkLinks: true } : {}),
         actions: agent.actions,
         violations: agent.violations.filter((v) => confirmedTitles.has(v.title)).map(({ title, expected, actual, assertIndex }) => ({ title, expected, actual, assertIndex })),
-        detectors: findings.filter((f) => f.confirmed && f.kind !== 'violation').map((f) => ({ kind: f.kind, title: f.title })),
+        detectors: findings.filter((f) => counts(f) && f.kind !== 'violation').map((f) => ({ kind: f.kind, title: f.title })),
       };
       const path = join(o.dir, 'repro', `${criterion.id}.json`);
       await mkdir(join(o.dir, 'repro'), { recursive: true });

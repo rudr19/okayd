@@ -84,7 +84,7 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {

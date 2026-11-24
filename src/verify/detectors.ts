@@ -23,6 +23,8 @@ export interface Finding {
   url: string;
   /** Index of the action after which this was seen. */
   step: number;
+  /** Set by attribution.ts when the finding was lowered because the agent did not cause it. */
+  downgraded?: 'third-party' | 'baseline';
 }
 
 /** A confirmed finding at or above this severity refutes the criterion. */
