@@ -1,7 +1,7 @@
 export { parseProof, claimedCriteria, compareToIssueBody, type Criterion, type ProofFile } from './proof.js';
 export { buildLedger, renderLedgerMarkdown, isWeak, verdictLabel, type LedgerOptions, type Ledger, type LedgerEntry, type Verdict, type TestOutcome } from './ledger.js';
 export { finalize, type FinalizeOptions, type FinalizeResult } from './finalize.js';
-export { lintTests, type LintOptions, type LintResult, type LintFinding } from './lint.js';
+export { lintTests, type LintOptions, type LintResult, type LintFinding, type RelevanceFinding } from './lint.js';
 export { parseJUnit } from './junit.js';
 export { parseCTRF } from './ctrf.js';
 export { default as OkproofPlaywrightReporter } from './playwright.js';

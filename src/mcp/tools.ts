@@ -341,13 +341,15 @@ const okproof_add_criterion: ToolDefinition = {
 const okproof_lint: ToolDefinition = {
   name: 'okproof_lint',
   description:
-    'Static check for weak tests: finds tests tagged [okproof:<id>] whose body has no assertion, tags that name a criterion no proof file lists, ' +
+    'Static check for weak and unrelated tests: finds tests tagged [okproof:<id>] whose body has no assertion or only trivial ones (expect(true).toBe(true)), ' +
+    'tests whose body never mentions any key word of the criterion they claim (reported as "possibly unrelated", advisory), tags that name a criterion no proof file lists, ' +
     'and criteria no tagged test claims. A tag is a claim; an assertion is evidence. Heuristic, never runs your tests. Paths must stay inside the working directory.',
   inputSchema: {
     type: 'object',
     properties: {
       dir: { type: 'string', description: 'Project root to scan, relative to the working directory. Default ".". Proof files are read from <dir>/.okproof.' },
       tests: { type: 'string', description: 'Limit the scan to this directory, file or simple glob (relative to dir), e.g. "e2e" or "e2e/**/*.spec.ts".' },
+      strictRelevance: { type: 'boolean', description: 'Treat "possibly unrelated" findings as failures. Default false (advisory).' },
     },
     additionalProperties: false,
   },
@@ -357,11 +359,16 @@ const okproof_lint: ToolDefinition = {
     if (tests !== undefined) resolveInside(dir, tests.replace(/[*?].*$/, ''), 'tests');
     let result;
     try {
-      result = await lintTests({ dir, tests });
+      result = await lintTests({ dir, tests, strictRelevance: args.strictRelevance === true });
     } catch (e) {
       throw new ToolFailure((e as Error).message);
     }
-    return [result.ok ? 'Lint passed: no weak tests or dangling tags.' : 'Lint failed: fix the items below.', '', ...result.lines].join('\n');
+    const head = !result.ok
+      ? 'Lint failed: fix the items below.'
+      : result.unrelated.length > 0
+        ? `Lint passed with ${result.unrelated.length} possibly-unrelated warning${result.unrelated.length === 1 ? '' : 's'}: check that those tests really exercise their criterion.`
+        : 'Lint passed: no weak or unrelated tests, no dangling tags.';
+    return [head, '', ...result.lines].join('\n');
   },
 };
 

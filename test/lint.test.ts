@@ -25,10 +25,10 @@ async function project(files: Record<string, string>, proof = '## #5 Lint\n- [ ]
 const weakOf = (src: string, py = false) => analyzeSource(src, py).tests.map((t) => t.weak);
 
 test('lint: TS test with expect is fine; empty and console.log-only are weak', () => {
-  assert.deepEqual(weakOf("test('a [okproof:5.1]', async () => {\n  expect(1).toBe(1);\n});\n"), [false]);
+  assert.deepEqual(weakOf("test('a [okproof:5.1]', async () => {\n  expect(add(1)).toBe(2);\n});\n"), [false]);
   assert.deepEqual(weakOf("test('a [okproof:5.1]', async () => {\n});\n"), [true]);
   assert.deepEqual(weakOf("test('a [okproof:5.1]', async ({ page }) => {\n  await page.goto('/');\n  console.log('expect(x)');\n});\n"), [true]);
-  assert.deepEqual(weakOf("test('a [okproof:5.1]', async () => { await x(); });\ntest('b [okproof:5.2]', () => { assert.equal(1, 1); });"), [true, false]);
+  assert.deepEqual(weakOf("test('a [okproof:5.1]', async () => { await x(); });\ntest('b [okproof:5.2]', () => { assert.equal(add(1), 2); });"), [true, false]);
   assert.deepEqual(weakOf("it(\n  'multi [okproof:5.1]',\n  async () => {\n    cy.get('a').should('exist');\n  },\n);\n"), [false]);
 });
 
@@ -52,7 +52,7 @@ test('lint: braces, brackets and quotes in strings, comments and regexes do not 
 });
 
 test('lint: two tags in one title are one test; later tests are not swallowed', () => {
-  const found = analyzeSource("test('a [okproof:5.1] [okproof:5.2]', () => {});\ntest('b [okproof:5.3]', () => { expect(1).toBe(1); });", false);
+  const found = analyzeSource("test('a [okproof:5.1] [okproof:5.2]', () => {});\ntest('b [okproof:5.3]', () => { expect(add(1)).toBe(2); });", false);
   assert.deepEqual(found.tests.map((t) => t.ids), [['5.1', '5.2'], ['5.3']]);
   assert.deepEqual(found.tests.map((t) => t.weak), [true, false]);
 });
@@ -69,7 +69,7 @@ test('lint: Python assert is fine, no assert is weak, decorators and docstring t
     '',
     '# [okproof:5.3]',
     'def test_after_comment():',
-    '    assert True',
+    '    assert ok',
     '',
     'def test_doc():',
     '    """[okproof:5.4] docs"""',
@@ -86,8 +86,8 @@ test('lint: Go t.Run bodies', () => {
 
 test('lintTests: reports weak, dangling and untested; ok is false only for weak or dangling', async () => {
   const root = await project({
-    'src/a.test.ts': "test('one [okproof:5.1]', () => { expect(1).toBe(1); });\ntest('two [okproof:5.2]', () => {});\ntest('ghost [okproof:9.9]', () => { expect(1).toBe(1); });\n",
-    'py/test_b.py': 'def test_three():  # [okproof:5.3]\n    assert 1\n',
+    'src/a.test.ts': "test('one [okproof:5.1]', () => { expect(add(1)).toBe(2); });\ntest('two [okproof:5.2]', () => {});\ntest('ghost [okproof:9.9]', () => { expect(add(1)).toBe(2); });\n",
+    'py/test_b.py': 'def test_three():  # [okproof:5.3]\n    assert ok\n',
     'node_modules/x/c.test.ts': "test('skipped [okproof:5.1]', () => {});",
     'dist/d.test.js': "test('skipped [okproof:5.1]', () => {});",
   });
@@ -111,7 +111,7 @@ test('lintTests: reports weak, dangling and untested; ok is false only for weak 
 
 test('lintTests: missing proof folder skips cross-checks; unknown tests path throws', async () => {
   const root = await mkdtemp(join(tmpdir(), 'okproof-lint-'));
-  await writeFile(join(root, 'a.spec.ts'), "test('x [okproof:1.1]', () => { expect(1).toBe(1); });");
+  await writeFile(join(root, 'a.spec.ts'), "test('x [okproof:1.1]', () => { expect(add(1)).toBe(2); });");
   const r = await lintTests({ dir: root });
   assert.equal(r.ok, true);
   assert.match(r.lines.join('\n'), /no proof files found/);
@@ -124,7 +124,7 @@ test('lint CLI: exit 1 for a weak test, 0 when clean', async () => {
   const r1 = spawnSync(process.execPath, [cli, 'lint', bad], { encoding: 'utf8' });
   assert.equal(r1.status, 1);
   assert.match(r1.stdout, /WEAK/);
-  const good = await project({ 'a.test.ts': "test('x [okproof:5.1]', () => { expect(1).toBe(1); });" });
+  const good = await project({ 'a.test.ts': "test('x [okproof:5.1]', () => { expect(add(1)).toBe(2); });" });
   const r2 = spawnSync(process.execPath, [cli, 'lint', '--tests', 'a.test.ts', good], { encoding: 'utf8' });
   assert.equal(r2.status, 0);
   assert.match(r2.stdout, /0 weak/);
