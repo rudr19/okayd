@@ -66,7 +66,7 @@ test('4a: adding or editing a criterion after the ledger was written fails as st
     assert.equal(added.status, 1, added.out);
     assert.match(added.out, /stale/i);
 
-    await writeFile(join(dir, '7.md'), '## #7 Demo\n- [ ] First thing works\n- [ ] Second thing works, but weaker\n'.replace('weaker', 'differently'));
+    await writeFile(join(dir, '7.md'), '## #7 Demo\n- [ ] First thing works\n- [ ] Second thing works differently\n');
     const edited = okayd(['gate', dir]);
     assert.equal(edited.status, 1, edited.out);
     assert.match(edited.out, /stale/i);
