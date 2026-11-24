@@ -11,6 +11,13 @@ All notable changes are listed here. The format follows
 - `okproof lint` flags tagged tests whose only assertions are trivial (`expect(true).toBe(true)`, `assert True`, ...) as weak.
 - `okproof lint` warns when a tagged test never mentions any key word of its criterion ("possibly unrelated"). Advisory; `--strict-relevance` makes it fail. Also in `lintTests()` and the `okproof_lint` MCP tool.
 
+- `okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]`: one-step setup of `.okproof/`, a CI workflow, and agent files (AGENTS.md, CLAUDE.md, skill, `.mcp.json`). Never overwrites.
+
+### Changed
+
+- Docs say precisely what is checked; signed ledgers and the hosted proof page are marked roadmap.
+- VISION.md and WHY-OKPROOF.md merged into WHY.md; GOVERNANCE.md and ROADMAP.md folded into the README "Project" section and CONTRIBUTING.md.
+
 ## [0.1.0] - 2026-11-24
 
 First release. okproof checks a pull request against the acceptance criteria in

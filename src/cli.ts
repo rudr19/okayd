@@ -10,6 +10,8 @@
 // okproof gate   [dir] [--allow-empty]
 //                                 exit 1 unless every proof file has a fresh, fully met ledger
 // okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
+// okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]
+//                                 scaffold .okproof/, and optionally CI and agent files; never overwrites
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -23,8 +25,9 @@ import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model
 import { replayOnly, verify } from './verify/run.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintTests } from './lint.js';
+import { runInit, RUNNERS, type Runner } from './init.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] | okproof gate [dir] [--allow-empty] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 let format: string | undefined;
 let tests: string | undefined;
@@ -186,6 +189,37 @@ async function runSync(): Promise<number> {
   }
   return 0;
 }
+/** okproof init: scaffold proof files, CI and agent files. --yes is accepted; init never prompts. */
+async function runInitCmd(): Promise<number> {
+  const f = flags(args.slice(1));
+  const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  for (const k of ['issue', 'title', 'runner']) {
+    if (f.get(k) === true) {
+      console.error(`--${k} needs a value. ${USAGE}`);
+      return 2;
+    }
+  }
+  const runner = str('runner');
+  if (runner !== undefined && !(RUNNERS as readonly string[]).includes(runner)) {
+    console.error(`Unknown --runner "${runner}". Use one of: ${RUNNERS.join(', ')}.`);
+    return 2;
+  }
+  try {
+    const result = await runInit({
+      cwd: process.cwd(),
+      issue: str('issue')?.replace(/^#/, ''),
+      title: str('title'),
+      runner: runner as Runner | undefined,
+      agents: f.get('agents') === true,
+      workflow: f.get('workflow') === true,
+    });
+    for (const l of result.lines) console.log(l);
+    return 0;
+  } catch (e) {
+    console.error((e as Error).message);
+    return 2;
+  }
+}
 const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
@@ -262,6 +296,7 @@ async function main(): Promise<number> {
     return 0;
   }
   if (cmd === 'verify') return runVerify();
+  if (cmd === 'init') return runInitCmd();
   console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
 }

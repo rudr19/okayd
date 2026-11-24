@@ -5,6 +5,11 @@ Thanks for helping. A few rules keep the project healthy and its ownership clear
 ## Before you start
 
 - For anything bigger than a typo, open an issue first so we can agree on the approach.
+  Larger changes (new commands, file formats, anything touching the principles in
+  [WHY.md](WHY.md)) need a short written proposal, open for at least 5 days. The
+  maintainer ([@rudr19](https://github.com/rudr19)) decides when there is no
+  agreement and writes down why. The [Project section of the README](README.md#project)
+  covers roles, compatibility and releases.
 - Security problems: don't open a public issue. See [SECURITY.md](SECURITY.md).
 
 ## Contributor License Agreement
