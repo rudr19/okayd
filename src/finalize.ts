@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parseProof } from './proof.js';
 import { buildLedger, renderLedgerMarkdown, type Ledger, type TestOutcome } from './ledger.js';
 import { publishToGitHub } from './github.js';
+import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
 
 export interface FinalizeOptions {
   /** Folder holding proof files. Default ".okayd". */
@@ -29,7 +30,10 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
   const ledgers: Ledger[] = [];
   const lines: string[] = [];
   for (const f of files) {
-    const ledger = buildLedger(parseProof(await readFile(join(dir, f), 'utf8')), outcomes);
+    let ledger = buildLedger(parseProof(await readFile(join(dir, f), 'utf8')), outcomes);
+    // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
+    const verified = await readVerifyFile(dir, ledger.issue);
+    if (verified) ledger = applyVerifyFile(ledger, verified);
     ledgers.push(ledger);
     await writeFile(join(dir, `ledger-${ledger.issue}.json`), JSON.stringify(ledger, null, 2));
     await writeFile(join(dir, `ledger-${ledger.issue}.md`), renderLedgerMarkdown(ledger));
