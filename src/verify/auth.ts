@@ -106,9 +106,17 @@ async function loadLogin(login: string | LoginHook): Promise<LoginHook> {
   return mod.default as LoginHook;
 }
 
+/**
+ * JSON that is safe to embed in JavaScript source: escapes characters that could
+ * end a script, open HTML, or terminate a line (CodeQL js/bad-code-sanitization).
+ */
+export function jsLiteral(value: unknown): string {
+  return JSON.stringify(value).replace(/[<>&/  ]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
 /** Runs before the page's own scripts on every document, and only once per tab. */
 function localStorageScript(origin: string, items: { name: string; value: string }[]): string {
-  return `(function(){try{if(location.origin!==${JSON.stringify(origin)})return;var m='__okproof_ls';if(sessionStorage.getItem(m))return;sessionStorage.setItem(m,'1');var a=${JSON.stringify(items.map((i) => [String(i.name), String(i.value)]))};for(var i=0;i<a.length;i++)localStorage.setItem(a[i][0],a[i][1]);}catch(e){}})();`;
+  return `(function(){try{if(location.origin!==${jsLiteral(origin)})return;var m='__okproof_ls';if(sessionStorage.getItem(m))return;sessionStorage.setItem(m,'1');var a=${jsLiteral(items.map((i) => [String(i.name), String(i.value)]))};for(var i=0;i<a.length;i++)localStorage.setItem(a[i][0],a[i][1]);}catch(e){}})();`;
 }
 
 /** Reads and validates everything once, so a bad file fails before any browser starts. */
