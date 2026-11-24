@@ -4,7 +4,7 @@ export type Verdict = 'met' | 'failed' | 'untested';
 
 export interface TestOutcome {
   title: string;
-  /** e2e result status: passed | failed | flaky | timed-out | skipped | ... */
+  /** Runner result status: passed | failed | flaky | timed-out | skipped | ... */
   status: string;
   /** Trace or video path backing the verdict. */
   evidence?: string;

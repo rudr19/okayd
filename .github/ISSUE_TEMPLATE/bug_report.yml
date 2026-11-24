@@ -19,6 +19,6 @@ body:
     id: versions
     attributes:
       label: Versions
-      placeholder: "okayd 0.0.1, e2e 0.24.0, Node 22"
+      placeholder: "okayd 0.0.1, Playwright 1.50, Node 22"
     validations:
       required: true

@@ -1,26 +1,42 @@
 #!/usr/bin/env node
-// okayd check [dir]  validates proof files and prints the tag for each criterion.
-// okayd gate  [dir]  exits 1 when any written ledger is not proven (a merge gate).
+// okayd check  [dir]              validate proof files and print each criterion's tag
+// okayd ingest <junit.xml> [dir]  build ledgers from any runner's JUnit XML
+// okayd gate   [dir]              exit 1 unless every written ledger is proven
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof } from './proof.js';
+import { parseJUnit } from './junit.js';
+import { finalize } from './finalize.js';
 
-const [cmd = 'check', dir = '.okayd'] = process.argv.slice(2);
+const USAGE = 'Usage: okayd check [dir] | okayd ingest <junit.xml> [dir] | okayd gate [dir]';
+const args = process.argv.slice(2);
+const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
-  const names = await readdir(dir);
   if (cmd === 'check') {
-    for (const f of names.filter((n) => n.endsWith('.md') && !n.startsWith('ledger-'))) {
+    const dir = args[1] ?? '.okayd';
+    for (const f of (await readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('ledger-'))) {
       const proof = parseProof(await readFile(join(dir, f), 'utf8'));
       console.log(`#${proof.issue} ${proof.title}`);
       for (const c of proof.criteria) console.log(`  [okayd:${c.id}] ${c.text}`);
     }
     return 0;
   }
+  if (cmd === 'ingest') {
+    const file = args[1];
+    if (!file) {
+      console.error(`Name the JUnit XML file to read. ${USAGE}`);
+      return 2;
+    }
+    const { lines } = await finalize(parseJUnit(await readFile(file, 'utf8')), { dir: args[2] ?? '.okayd' });
+    for (const line of lines) console.log(line);
+    return 0;
+  }
   if (cmd === 'gate') {
-    const ledgers = names.filter((n) => n.startsWith('ledger-') && n.endsWith('.json'));
+    const dir = args[1] ?? '.okayd';
+    const ledgers = (await readdir(dir)).filter((n) => n.startsWith('ledger-') && n.endsWith('.json'));
     if (ledgers.length === 0) {
-      console.error('No ledgers found. Run the suite with the okayd() reporter first.');
+      console.error('No ledgers found. Run your tests with the Okayd reporter, or run okayd ingest, first.');
       return 1;
     }
     let ok = true;
@@ -33,7 +49,7 @@ async function main(): Promise<number> {
     }
     return ok ? 0 : 1;
   }
-  console.error(`Unknown command "${cmd}". Use: okayd check | okayd gate`);
+  console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
 }
 
