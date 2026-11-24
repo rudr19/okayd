@@ -7,8 +7,9 @@ The criteria go in a proof file in the repo. Tests claim criteria by tag. The
 run ends with a ledger that marks each criterion **met**, **failed** or
 **untested**. Untested never counts as a pass, and neither does a flaky pass.
 
-Okayd is a plugin for the [e2e](https://github.com/e2e-inc/e2e) test
-runner. It doesn't replace the runner.
+Okayd doesn't run your tests. It works with **Playwright Test** directly, and
+with **any runner that writes JUnit XML**: Jest, Vitest, pytest, JUnit,
+Cypress, Go and more. It has no runtime dependencies.
 
 ## 1. Write a proof file
 
@@ -23,39 +24,52 @@ runner. It doesn't replace the runner.
 
 Run `npx okayd check` to print the tag for each criterion.
 
-## 2. Claim criteria in tests
+## 2. Claim criteria in test names
 
 ```ts
-test('member upgrades to Pro [okayd:142.1] [okayd:142.2]', async ({ app, agent }) => {
+test('member upgrades to Pro [okayd:142.1] [okayd:142.2]', async ({ page }) => {
   // ...
 });
 ```
 
-## 3. Add the reporter
+## 3. Build the ledger
+
+**Playwright Test**: add the reporter.
 
 ```ts
-// e2e.config.ts
-import { okayd } from 'okayd';
-
-export default {
-  // ...
-  reporters: ['list', okayd()],
-};
+// playwright.config.ts
+export default defineConfig({
+  reporter: [['list'], ['okayd/playwright']],
+});
 ```
 
-Each run writes `.okayd/ledger-<issue>.json` and `.md`. In GitHub Actions it also
-writes the ledger to the job summary and posts it as one pull request comment
+A test that passes only after a retry counts as flaky, which is not proven.
+When Playwright records a trace, the ledger links it as evidence.
+
+**Any other runner**: write JUnit XML, then ingest it.
+
+```bash
+npx vitest run --reporter=junit --outputFile=junit.xml
+npx okayd ingest junit.xml
+```
+
+Both write `.okayd/ledger-<issue>.json` and `.md`. In GitHub Actions they also
+write the ledger to the job summary and post it as one pull request comment
 that reruns update. Give the job `pull-requests: write`, or pass
-`okayd({ github: false })` to turn this off.
-`npx okayd gate` exits 1 unless every criterion is met. Use it as a required
-CI check.
+`{ github: false }` to turn this off.
+
+## 4. Gate the merge
+
+`npx okayd gate` exits 1 unless every criterion is met. Make it a required
+check.
 
 ## Roadmap
 
-- [x] Proof files, ledger, e2e reporter, merge gate
+- [x] Proof files, ledger, merge gate
 - [x] Ledger posted as one PR comment (updated on reruns) and in the job summary
+- [x] Playwright Test reporter and JUnit ingest for any runner
 - [ ] Verifier agent that attacks each criterion on the preview deployment
-- [ ] "Harden": commit passing agent replays as tests linked to criteria
+- [ ] "Harden": commit passing verifier runs as tests linked to criteria
 - [ ] OIDC-signed ledgers on a hosted proof page
 
 ## License
