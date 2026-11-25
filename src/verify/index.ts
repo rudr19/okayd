@@ -24,3 +24,6 @@ export { replay, type ReplayResult, type ReplayOptions } from './replay.js';
 export { verify, verifyOne, replayOnly, type VerifyOptions, type VerifyRun, type ReplayOnlyResult } from './run.js';
 export { applyVerifyFile, readVerifyFile, criteriaHash } from './ledger.js';
 export type { CriterionVerdict, ReproFile, ResultFinding, VerifyFile, VerifyResult } from './types.js';
+export { verifyWithProbes, savingsLine, type ProbeVerifyOptions, type ProbeVerifyOutcome, type ProbeStats } from './probe-run.js';
+export { PROBES, matchProbes, runProbe, type Probe, type ProbeId, type ProbeResult } from './probes.js';
+export type { CheckSpec } from './checks.js';

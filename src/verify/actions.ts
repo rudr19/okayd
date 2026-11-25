@@ -3,6 +3,7 @@
 // record the element's role and accessible name; replay resolves by those.
 
 import type { Page } from '../driver/index.js';
+import { runCheck, type CheckSpec } from './checks.js';
 
 export interface Target {
   role: string;
@@ -15,6 +16,7 @@ export type Action =
   | { type: 'goto'; url: string }
   | ({ type: 'click'; ref?: string } & Target)
   | ({ type: 'type'; ref?: string; text: string } & Target)
+  | ({ type: 'dblclick'; ref?: string } & Target)
   | { type: 'press'; key: string }
   | { type: 'setViewport'; width: number; height: number }
   | { type: 'reload' }
@@ -22,9 +24,10 @@ export type Action =
   | { type: 'offline'; on: boolean }
   | { type: 'assertText'; text: string; present: boolean }
   | { type: 'assertUrl'; includes: string }
-  | { type: 'assertNoProblems' };
+  | { type: 'assertNoProblems' }
+  | { type: 'assertCheck'; check: CheckSpec };
 
-export const ASSERTIONS = new Set<Action['type']>(['assertText', 'assertUrl', 'assertNoProblems']);
+export const ASSERTIONS = new Set<Action['type']>(['assertText', 'assertUrl', 'assertNoProblems', 'assertCheck']);
 export const isAssertion = (a: Action): boolean => ASSERTIONS.has(a.type);
 
 export interface RefEntry {
@@ -126,6 +129,7 @@ export async function execute(page: Page, action: Action, ctx: ExecContext): Pro
         await settle(page);
         return { ran: true };
       case 'click':
+      case 'dblclick':
       case 'type': {
         let ref = ctx.resolveByLabel ? undefined : action.ref;
         if (!ref) {
@@ -134,6 +138,7 @@ export async function execute(page: Page, action: Action, ctx: ExecContext): Pro
           if (!ref) return { ran: false, error: `No ${describeTarget(action)} on the page` };
         }
         if (action.type === 'click') await page.click(ref);
+        else if (action.type === 'dblclick') await page.doubleClick(ref);
         else await page.type(ref, action.text);
         await settle(page);
         return { ran: true };
@@ -171,6 +176,10 @@ export async function execute(page: Page, action: Action, ctx: ExecContext): Pro
         const url = await page.url();
         const passed = url.includes(action.includes);
         return { ran: true, passed, message: passed ? undefined : `expected URL to include ${JSON.stringify(action.includes)}, got ${url}` };
+      }
+      case 'assertCheck': {
+        const r = await runCheck(page, action.check);
+        return { ran: true, passed: r.passed, message: r.message };
       }
       case 'assertNoProblems': {
         const p = page.problems();

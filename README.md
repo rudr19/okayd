@@ -611,6 +611,56 @@ origin, at most 20 links) broken links. They are confirmed the same way, by
 reappearing on replay. A confirmed finding of severity 3 or more refutes the
 criterion. Unnamed controls and overflow are severity 2: reported, not failing.
 
+### Zero-token probes
+
+Most adversarial checks need no model. `okproof verify` first runs deterministic
+**probes**: scripted attacks that drive the same driver, record plain actions and end
+in an assertion that fails when the bug is present. Each finding is **replay-confirmed**
+exactly like a model's claim: the recorded actions are run again with no model in a
+fresh browser, and only a finding that reproduces counts. A confirmed finding at
+severity 3 or more refutes the criterion and writes the usual `.okproof/repro/<id>.json`.
+
+| Probe | What it catches | Criterion words that select it |
+| --- | --- | --- |
+| `persistence` | fills the first form, submits, and the app says it saved (a success message or a new list item); a fresh page load no longer shows the value | save, persist, reload, refresh, stored, remember, "still there" |
+| `back-forward` | follows up to 3 same-origin links and goes Back; wrong URL, blank page, lost heading, uncaught exceptions | back button, go back, history |
+| `double-submit` | clicks each submit button (up to 3) twice in the same tick; the same write is sent twice, or the item is listed twice | submit, form, order, checkout, duplicate, twice |
+| `narrow-viewport` | 375x812: sideways scrolling, and controls that were usable at desktop width but now have zero size or sit off screen (fixed or transformed off-canvas menus are left alone) | mobile, phone, responsive, viewport, narrow, 375 |
+| `keyboard` | tabs through the page: clickable things Tab never lands on (a `div` with `onclick`, `tabindex="-1"` on a button) and focused controls with no visible change | keyboard, accessible, a11y, focus, tab order |
+| `offline` | goes offline, uses the page's buttons: uncaught exceptions or a blank page instead of a message | offline, lost connection, network failure |
+| `hostile-input` | submits empty, 10,000-character, unicode/right-to-left/emoji and `<script>` text: uncaught exceptions, 5xx responses, a blank page, or the text coming back as live markup (XSS) | input, field, validate, sanitize, escape, xss, injection |
+
+Matching is by whole words, so "formatted" does not select `double-submit`. Console and
+network hygiene (console errors, failed requests, 4xx/5xx) stays with the detectors.
+
+```bash
+npx okproof verify --url https://preview.example.com --probes-only   # no key, zero tokens
+npx okproof verify --url https://preview.example.com                 # probes first, then the model
+```
+
+`--probes-only` never reads a key and never calls a model. A criterion with no matching
+probe is reported `inconclusive` (`no-probe`), and one the probes could not refute is also
+`inconclusive` (`probes-clean`): a clean probe run does not prove the criterion holds.
+By default the model runs only for criteria a probe did not refute, so the saving comes from
+criteria probes refute: on an app with no bugs the probes find, the model still runs for every
+criterion. The run ends with the saving, for example `probes covered 4/6 criteria with 0 model tokens; model used for 2
+(1 had no matching probe, 1 survived their probes)`. Without a key the probes still run and
+the remaining criteria report why; `--no-probes` restores the model-only behaviour.
+Probes act on the app: they type, click and submit, so point them at a preview or test
+environment, as with the model. A probe that finds nothing to act on (no form, no link)
+says so rather than passing silently.
+
+Known limits: probes fill every text field with the same text and use the first
+submit-like button, so forms with validated fields (email, number) may reject the input;
+the persistence probe submits, then loads the page again with a fresh navigation (Chrome restores typed form values on Reload, which would hide the bug) and expects a visible sign of success before it expects the data back;
+the offline probe uses the page's buttons and never reloads, because without a service worker every site shows the browser's own error page offline; the
+keyboard probe covers the top-level document only (no iframes, no focus traps in modals).
+
+**Page load waits.** `--wait-until load|domcontentloaded|networkidle` (and
+`page.goto(url, { waitUntil, timeoutMs })` in the driver) choose what a navigation waits
+for; `load` is the default. `networkidle` waits for 500 ms with no requests. A page that
+does not finish in time fails with the event it waited for and what to try instead.
+
 **Which account pays.** The Anthropic adapter needs an explicit key, either
 `new AnthropicModel({ apiKey })` or `OKPROOF_ANTHROPIC_API_KEY`. It never falls
 back to `ANTHROPIC_API_KEY`, auth tokens or CLI profiles, so you choose which
