@@ -25,12 +25,14 @@ import { parseResults, runGate, sha256Hex, type LintRequest } from './trust.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { runProbesCli } from './verify/probe-cli.js';
+import { WAIT_UNTIL_VALUES, type WaitUntil } from './driver/index.js';
 import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [--probes-only | --no-probes] [--wait-until load|domcontentloaded|networkidle] [options]';
 const argv = process.argv.slice(2);
 const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance });
 let format: string | undefined;
@@ -95,8 +97,17 @@ async function runVerify(): Promise<number> {
   const dir = str('dir') ?? '.okproof';
   const issue = str('issue');
   const url = str('url');
+  let waitUntil: WaitUntil | undefined;
+  if (f.has('wait-until')) {
+    const w = str('wait-until');
+    if (!w || !(WAIT_UNTIL_VALUES as readonly string[]).includes(w)) {
+      console.error(`--wait-until must be one of: ${WAIT_UNTIL_VALUES.join(', ')}.`);
+      return 2;
+    }
+    waitUntil = w as WaitUntil;
+  }
   if (f.get('replay-only') === true) {
-    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, ...auth });
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, waitUntil, ...auth });
     if (results.length === 0) {
       console.error(`No repro files in ${dir}/repro. Run okproof verify first.`);
       return 2;
@@ -113,6 +124,10 @@ async function runVerify(): Promise<number> {
     console.error(`Name the app to test with --url <baseUrl>. ${USAGE}`);
     return 2;
   }
+  const probesOnly = f.get('probes-only') === true;
+  if (probesOnly || f.get('no-probes') !== true) {
+    return runProbesCli({ dir, issue, url, auth, waitUntil, mode: probesOnly ? 'only' : 'first', model: str('model'), effort: str('effort') as Effort | undefined, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors') });
+  }
   let model: AnthropicModel;
   try {
     model = new AnthropicModel({ model: str('model'), effort: str('effort') as Effort | undefined });
@@ -121,7 +136,7 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), waitUntil, ...auth, log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {

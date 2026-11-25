@@ -24,6 +24,8 @@ export interface VerifyResult {
   repro?: string;
   steps: number;
   usage: { input: number; output: number };
+  /** Probes that matched this criterion's wording (set when probes ran). */
+  probes?: string[];
 }
 
 export interface VerifyFile {

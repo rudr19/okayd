@@ -4,7 +4,7 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, type Criterion } from '../proof.js';
-import { Browser } from '../driver/index.js';
+import { Browser, type WaitUntil } from '../driver/index.js';
 import { verifyCriterion, type AgentResult } from './agent.js';
 import { attributeFinding } from './attribution.js';
 import { prepareAuth, type AuthOptions, type PreparedAuth } from './auth.js';
@@ -23,6 +23,8 @@ export interface VerifyOptions extends AuthOptions {
   model: ModelClient;
   /** Path to a Chrome/Chromium/Edge binary. Default: auto-detect. */
   chrome?: string;
+  /** What page loads wait for. Default 'load'. */
+  waitUntil?: WaitUntil;
   maxSteps?: number;
   budgetTokens?: number;
   checkLinks?: boolean;
@@ -47,11 +49,11 @@ async function proofFiles(dir: string, issue?: string): Promise<string[]> {
 }
 
 /** Replays actions in a fresh browser, so cookies and storage from the agent run cannot leak in. */
-async function freshReplay(
+export async function freshReplay(
   actions: ReproFile['actions'],
-  o: { baseUrl: string; chrome?: string; checkLinks?: boolean; screenshotDir?: string; screenshotPrefix?: string; auth?: PreparedAuth },
+  o: { baseUrl: string; chrome?: string; waitUntil?: WaitUntil; checkLinks?: boolean; screenshotDir?: string; screenshotPrefix?: string; auth?: PreparedAuth },
 ): Promise<{ result: ReplayResult; screenshots: string[] }> {
-  const browser = await Browser.launch({ executablePath: o.chrome });
+  const browser = await Browser.launch({ executablePath: o.chrome, waitUntil: o.waitUntil });
   const screenshots: string[] = [];
   try {
     const page = await browser.newPage();
@@ -75,7 +77,7 @@ async function freshReplay(
 
 export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: string }): Promise<VerifyResult> {
   const auth = o.prepared ?? (await prepareAuth(o));
-  const browser = await Browser.launch({ executablePath: o.chrome });
+  const browser = await Browser.launch({ executablePath: o.chrome, waitUntil: o.waitUntil });
   let agent: AgentResult;
   try {
     const page = await browser.newPage();
@@ -101,6 +103,7 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
     const fr = await freshReplay(agent.actions, {
       baseUrl: o.baseUrl,
       chrome: o.chrome,
+      waitUntil: o.waitUntil,
       checkLinks: o.checkLinks,
       auth,
       screenshotDir: join(o.dir, 'screenshots'),
@@ -181,7 +184,7 @@ export interface ReplayOnlyResult {
 }
 
 /** Re-runs saved repro scripts with no model. Free, so it is safe in CI. */
-export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: string; chrome?: string } & AuthOptions): Promise<ReplayOnlyResult[]> {
+export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: string; chrome?: string; waitUntil?: WaitUntil } & AuthOptions): Promise<ReplayOnlyResult[]> {
   const dir = o.dir ?? '.okproof';
   const auth = await prepareAuth(o);
   let names: string[];
@@ -193,7 +196,7 @@ export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: st
   const out: ReplayOnlyResult[] = [];
   for (const name of names) {
     const repro = JSON.parse(await readFile(join(dir, 'repro', name), 'utf8')) as ReproFile;
-    const { result } = await freshReplay(repro.actions, { baseUrl: o.baseUrl ?? repro.baseUrl, chrome: o.chrome, checkLinks: repro.checkLinks, auth });
+    const { result } = await freshReplay(repro.actions, { baseUrl: o.baseUrl ?? repro.baseUrl, chrome: o.chrome, waitUntil: o.waitUntil, checkLinks: repro.checkLinks, auth });
     const lines: string[] = [];
     let reproduced = false;
     for (const v of repro.violations) {

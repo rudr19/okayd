@@ -6,6 +6,11 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Zero-token probes: `okproof verify` now runs deterministic probes first (persistence, back-forward, double-submit, narrow-viewport, keyboard, offline, hostile-input), each replay-confirmed with no model, and calls the model only for criteria no probe refuted. `--probes-only` runs just the probes and needs no key; `--no-probes` restores model-only behaviour. See the README section "Zero-token probes".
+- Driver: `page.goto(url, { waitUntil: 'load' | 'domcontentloaded' | 'networkidle', timeoutMs })` and `okproof verify --wait-until`. A page that does not finish loading fails with the event it waited for and what to try instead. `page.doubleClick(ref)` and `page.requests()` were added too.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added
