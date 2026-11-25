@@ -219,7 +219,7 @@ export async function overlay(root: string, tree: string, proofDirRel: string, t
 
 /** The results path relative to the repository root. Throws if it points outside. */
 export function resultsRelative(root: string, cwd: string, results: string): string {
-  const rel = normalize(relative(root, resolve(cwd, results)));
+  const rel = normalize(relative(realOrResolved(root), realOrResolved(resolve(cwd, results))));
   if (rel === '' || rel === '.' || isAbsolute(rel) || rel === '..' || rel.startsWith(`..${'/'}`) || rel.startsWith('..\\')) {
     throw new Error(`--results "${results}" must be a file inside the repository, because each side writes it in its own checkout.`);
   }
