@@ -149,6 +149,8 @@ export async function verifyOne(criterion: Criterion, o: VerifyOptions & { dir: 
     repro,
     steps: agent.steps,
     usage: agent.usage,
+    tokens: agent.usage.input + agent.usage.output,
+    budgetTokens: agent.budgetTokens,
   };
 }
 

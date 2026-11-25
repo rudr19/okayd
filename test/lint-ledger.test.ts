@@ -9,7 +9,7 @@ import { analyzeSource, applyLintToOutcomes, globMatch, lintTests, scanBraces } 
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
-async function project(strongBody = 'assert.equal(1 + 1, 2);') {
+async function project(strongBody = "assert.equal(await download('a file'), 'a file');") {
   const root = await mkdtemp(join(tmpdir(), 'okproof-lint-ledger-'));
   await mkdir(join(root, '.okproof'));
   await mkdir(join(root, 'ui'));
@@ -72,11 +72,14 @@ test('gate --lint without --results is a usage error', async () => {
   assert.equal(run(root, ['gate', '--lint']).status, 2);
 });
 
-test('relevance stays advisory with --lint; --strict-relevance makes ingest fail', async () => {
+test('with --lint an unrelated test does not fail ingest (it caps the criterion at E1); --strict-relevance makes ingest fail', async () => {
   const root = await project('assert.equal(compute(), 42);');
   const r = run(root, ['ingest', 'junit.xml', '--lint']);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /possibly unrelated/);
+  const l = JSON.parse(await readFile(join(root, '.okproof', 'ledger-1.json'), 'utf8'));
+  assert.equal(l.entries[1].verdict, 'insufficient');
+  assert.equal(l.entries[1].level, 1);
   const s = run(root, ['ingest', 'junit.xml', '--lint', '--strict-relevance']);
   assert.equal(s.status, 1);
 });

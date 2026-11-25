@@ -10,7 +10,7 @@
 //     next heading of the same or a higher level. Otherwise every checkbox does.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { parseProof, splitStableId } from './proof.js';
+import { formatCriterionFlags, parseProof, splitCriterionFlags } from './proof.js';
 import { apiBase } from './github.js';
 
 // Same pattern as src/github.ts (owner/name as GitHub allows them).
@@ -114,19 +114,22 @@ interface Item {
   text: string;
   /** Stable id from a `{#id}` prefix; kept so rewriting the file never loses it. */
   stableId?: string;
+  /** Required evidence level and `pre` flag, kept so rewriting the file never weakens a criterion. */
+  level?: number;
+  pre?: boolean;
 }
 
-/** Issue checkbox text as items: a `{#id}` the issue itself carries is adopted. */
+/** Issue checkbox text as items: a `{#id E3}` block the issue itself carries is adopted. */
 function items(texts: string[]): Item[] {
   return texts.map((t) => {
-    const { id, text } = splitStableId(t);
-    return id ? { text: norm(text), stableId: id } : { text };
+    const { id, level, pre, text } = splitCriterionFlags(t);
+    return { text: norm(text), ...(id ? { stableId: id } : {}), ...(level !== undefined ? { level } : {}), ...(pre ? { pre } : {}) };
   });
 }
 
 function render(issue: number, title: string, list: Item[]): string {
   const head = `## #${issue}${title ? ` ${title}` : ''}`;
-  const out = [head, ...list.map((t) => `- [ ] ${t.stableId ? `{#${t.stableId}} ` : ''}${t.text}`)].join('\n') + '\n';
+  const out = [head, ...list.map((t) => `- [ ] ${formatCriterionFlags({ id: t.stableId, level: t.level, pre: t.pre })}${t.text}`)].join('\n') + '\n';
   parseProof(out); // refuses duplicate or invalid ids before anything is written
   return out;
 }
@@ -201,7 +204,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
   }
 
-  const old: Array<{ text: string; index: number; stableId?: string }> = [];
+  const old: Array<{ text: string; index: number; stableId?: string; level?: number; pre?: boolean }> = [];
   let oldTitle = '';
   if (existing !== undefined) {
     try {
@@ -210,7 +213,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
         throw new Error(`${path} describes issue #${proof.issue}, not #${opts.issue}.`);
       }
       oldTitle = norm(proof.title);
-      for (const c of proof.criteria) old.push({ text: norm(c.text), index: c.index, stableId: c.stableId });
+      for (const c of proof.criteria) old.push({ text: norm(c.text), index: c.index, stableId: c.stableId, level: c.level, pre: c.pre });
     } catch (e) {
       // A file with a heading for another issue is a real conflict; an empty or
       // unparseable one is just rewritten.
@@ -219,20 +222,20 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
   }
 
   const free = wanted.map((w) => ({ ...w, used: false }));
-  const kept: Array<{ text: string; oldIndex: number; stableId?: string }> = [];
+  const kept: Array<{ text: string; oldIndex: number; stableId?: string; level?: number; pre?: boolean }> = [];
   const removedOld: Array<{ text: string; index: number; stableId?: string }> = [];
   for (const o of old) {
     const hit = free.find((f) => !f.used && f.text === o.text);
     if (hit) {
       hit.used = true;
-      kept.push({ text: o.text, oldIndex: o.index, stableId: o.stableId ?? hit.stableId });
+      kept.push({ text: o.text, oldIndex: o.index, stableId: o.stableId ?? hit.stableId, level: o.level ?? hit.level, pre: o.pre ?? hit.pre });
     } else removedOld.push(o);
   }
-  const added = free.filter((f) => !f.used).map<Item>((f) => ({ text: f.text, ...(f.stableId ? { stableId: f.stableId } : {}) }));
+  const added = free.filter((f) => !f.used).map<Item>((f) => ({ text: f.text, ...(f.stableId ? { stableId: f.stableId } : {}), ...(f.level !== undefined ? { level: f.level } : {}), ...(f.pre ? { pre: f.pre } : {}) }));
 
   // A stable id is the id; a positional one is the 1-based position.
   const id = (n: number, stable?: string): string => `${opts.issue}.${stable ?? n}`;
-  const finalItems: Item[] = [...kept.map((k) => ({ text: k.text, ...(k.stableId ? { stableId: k.stableId } : {}) })), ...added];
+  const finalItems: Item[] = [...kept.map((k) => ({ text: k.text, ...(k.stableId ? { stableId: k.stableId } : {}), ...(k.level !== undefined ? { level: k.level } : {}), ...(k.pre ? { pre: k.pre } : {}) })), ...added];
   const result: SyncResult = {
     path,
     created: existing === undefined,

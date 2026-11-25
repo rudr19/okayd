@@ -191,6 +191,88 @@ pull request that touches `.okproof/*.md` now needs a human owner's approval, so
 criteria cannot be silently removed or reworded by the author of the change.
 Use a team or a person who is not the agent's account.
 
+## Evidence levels
+
+"Met" is not all the same. okproof grades the evidence behind each criterion on a
+scale from E0 to E4, records it in the ledger, and lets a proof file say how much
+a criterion needs.
+
+| Level | Name | What it takes |
+| --- | --- | --- |
+| E0 | claimed | The criterion exists. Nothing else. (A failing tagged test, or a verifier refutation, puts a criterion back here.) |
+| E1 | a tagged test passed | At least one test tagged `[okproof:<id>]` passed. |
+| E2 | solid test | Every tagged test passed cleanly (no flake, no skip), at least one made a real, non-trivial assertion, and `okproof lint` does not call that test unrelated to the criterion. |
+| E3 | survived adversarial verification | E2, and `okproof verify` ended `held` for the criterion, or a diff or revert file marks it `proven-by-change` or `covered` (below). |
+| E4 | proven in CI | E3, produced in CI by `okproof gate --results <file>` from this job's own results, on a commit whose `.okproof/` folder is identical to the base branch's. |
+
+**Requiring a level.** Put tokens in one `{...}` block at the start of the
+criterion line, separated by spaces:
+
+```
+- [ ] {E3} Payments are charged once
+- [ ] {#pay E3} Payments are charged once         (stable id "pay" and a required level)
+- [ ] {#pay E3 pre} Existing payments still work  (all three)
+```
+
+| Token | Meaning |
+| --- | --- |
+| `#id` | A stable id (lowercase letters, digits, `-`, with at least one letter), as in [docs/stable-ids.md](docs/stable-ids.md). |
+| `E0` to `E4` | The level this criterion requires. Upper case `E`, one digit. |
+| `pre` | Reserved: marks a criterion that already held before the change. It has no effect on the level. |
+
+The tokens may come in any order, each at most once (one id, one level). A block
+with no recognised token, such as `{JSON} responses are valid`, is ordinary text.
+Once a block has a recognised token, an unknown or malformed one (`{E5}`, `{e3}`,
+`{#pay urgent}`) is an error, so a typo never silently weakens a criterion.
+
+**Default level.** A criterion that names no level needs **E2**. Change it with
+`--min-level E3` (on `ingest`, `gate`, or the Action's `min-level` input) or
+`OKPROOF_MIN_LEVEL`. A line's own `{E..}` always wins, so `--min-level` raises or
+lowers only the lines that name nothing. `E0` and `E1` never loosen the test
+rules: a criterion is **met** only when the tests make it met (a clean pass with a
+real assertion) **and** its level reaches the requirement. `{E1}` is the way to
+accept a test that lint calls unrelated.
+
+**What you see.** Ledger entries carry `level`, `required` and `gaps`. The
+markdown ledger and the PR comment add a Level column with a bar as long as the
+requirement, for example `E2/E3 ▰▰▱`. A criterion with passing tests but too
+little evidence has the verdict `INSUFFICIENT EVIDENCE`, and the gate says exactly
+what is missing:
+
+```
+#142 criterion 142.pay has E2 evidence but requires E3: survive adversarial
+verification: run okproof verify until it holds for 142.pay, or add
+.okproof/diff-142.json or revert-142.json marking it proven-by-change or covered.
+```
+
+The MCP `okproof_status` tool shows the same levels and a "Raise the evidence"
+list with the next step for each criterion.
+
+**Adversarial evidence (E3).** okproof reads three optional files next to the
+proof file `<n>.md`:
+
+- `verify-<n>.json`, written by `okproof verify`: a result with verdict `held`.
+- `diff-<n>.json` and `revert-<n>.json`: `{"criteriaHash"?: "...", "results": [{"criterionId": "142.1", "verdict": "proven-by-change"}]}`, or `"results": {"142.1": "covered"}`. The verdicts `proven-by-change` and `covered` count. This format is provisional until the commands that write these files ship.
+
+A file whose `criteriaHash` does not match the proof file's criteria is stale and
+ignored. A malformed file supplies no evidence.
+
+**E4 and the Action.** Only the gate can attest E4, and only for a ledger it
+rebuilds in memory from `--results`; a ledger read from disk is credited with at
+most E3, so committing one never counts. The GitHub Action compares `.okproof/`
+with the base branch (`base-ref` input, default the pull request base) and passes
+`--proof-matches-base` when it is identical; outside the Action pass the flag
+yourself, or set `OKPROOF_PROOF_MATCHES_BASE=1`. Because the whole folder must
+match, a pull request that adds or edits proof or verifier files cannot reach E4:
+land them first, then later pull requests can. A ledger written before evidence
+levels counts as E2.
+
+Limits: levels are only as good as their inputs. E2 trusts the runner's assertion
+counts and lint's heuristics, E3 trusts committed `verify`, `diff` and `revert`
+files (CODEOWNERS protects them, see above), and with `--lint` a test it flags as
+unrelated now holds its criterion at E1, which fails the default E2 until the test
+is fixed or the line says `{E1}`.
+
 ## Weak and unrelated tests
 
 A tag is a claim; an assertion is evidence. A tagged test that passes but makes
@@ -353,7 +435,7 @@ jobs:
 Inputs: `results` (JUnit XML path, optional), `dir` (default `.okproof`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
 `issue` (issue number to sync from; default: detected from the PR body),
-`sync` (`check` default, `write` or `off`), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+`sync` (`check` default, `write` or `off`), `min-level` (default `E2`, see [Evidence levels](#evidence-levels)), `base-ref` (branch the proof folder is compared with to allow E4; default the PR base), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as
@@ -404,8 +486,8 @@ export OKPROOF_ANTHROPIC_API_KEY=...        # explicit key, see below
 npx okproof verify --url https://preview.example.com --issue 142
 ```
 
-Options: `--dir .okproof`, `--max-steps 15`, `--model claude-opus-5-5`,
-`--effort medium`. For an app behind a login use `--storage-state <file>`,
+Options: `--dir .okproof`, `--max-steps 15`, `--budget-tokens 20000`,
+`--model claude-opus-5-5`, `--effort medium` (see [Keeping verifier cost low](#keeping-verifier-cost-low)). For an app behind a login use `--storage-state <file>`,
 `--header 'Name: value'` or `--login <script.mjs>`; `--strict-detectors` turns off
 per-detector attribution of findings (see [docs/trust.md](docs/trust.md)). It writes:
 
@@ -447,6 +529,30 @@ against the live API**; its request and response shapes follow the SDK docs
 and are checked against a fake client only. Known limits: broken-link checks
 send no cookies; the key set is Enter, Tab, Escape, Backspace and arrows; one
 tab, no file uploads or dialogs.
+
+### Keeping verifier cost low
+
+Every step resends the conversation, so cost grows with the page. okproof does
+four things about it:
+
+- **Snapshot diffs.** The first view of the page is a full accessibility snapshot.
+  After that each step sends only the lines that were added (`+|`) or removed
+  (`-|`) with two lines of context, or "unchanged" when nothing moved. A full
+  snapshot is sent again when the diff would be as long as the page, every fifth
+  view, and whenever the agent calls the `snapshot` tool. A typical step sends a small
+  fraction of the characters.
+- **A token budget per criterion.** `--budget-tokens 20000` (the default) caps
+  input plus output tokens for one criterion, as the API reports them (cache reads
+  are reported separately and not counted). When a run goes over, it stops
+  cleanly with the verdict `inconclusive` and the outcome `budget`; it never
+  counts as holding. `--budget-tokens 0` removes the cap. The tokens used and the
+  budget are in `verify-<issue>.json` (`tokens`, `budgetTokens`, `usage`) and
+  printed per criterion by the CLI.
+- **Prompt caching.** The system prompt and the tool list never change within a
+  run, and the page content comes last, so the API can cache everything before it.
+- **A smaller model.** `--model <id>` picks any model your key can use; the
+  default is `claude-opus-5-5`. A smaller model makes cheaper runs, with fewer
+  and shallower attacks. Lower `--effort` and `--max-steps` also cut cost.
 
 ## Use with coding agents
 

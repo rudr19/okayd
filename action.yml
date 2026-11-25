@@ -38,6 +38,14 @@ inputs:
     description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
     required: false
     default: auto
+  min-level:
+    description: 'Evidence level (E0 to E4) a criterion must reach when its proof line names none, for example {E3}. E2 means a clean tagged test with a real assertion; E3 adds adversarial verification (okproof verify); E4 adds proof produced in this CI job on a commit whose proof folder matches the base branch. See "Evidence levels" in the README.'
+    required: false
+    default: E2
+  base-ref:
+    description: 'Branch the proof folder is compared with to allow E4. Default: the pull request base. Empty (not a pull request) means E4 is never granted.'
+    required: false
+    default: ${{ github.base_ref }}
   node-version:
     description: Node.js version used to run okproof.
     required: false
@@ -107,9 +115,25 @@ runs:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/dist/src/cli.js" check "$DIR"
 
+    - name: Compare proof folder with the base branch
+      id: base
+      shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        DIR: ${{ inputs.dir }}
+      run: |
+        # E4 needs .okproof/ identical to the base branch, so a pull request cannot change what it is judged against.
+        match=false
+        if [ -n "$BASE_REF" ] && git fetch --no-tags --depth=1 origin "refs/heads/$BASE_REF" >/dev/null 2>&1; then
+          if git diff --quiet FETCH_HEAD HEAD -- "$DIR" 2>/dev/null; then match=true; fi
+        fi
+        echo "matches=$match" >> "$GITHUB_OUTPUT"
+
     - name: Build ledgers from JUnit XML
       shell: bash
       env:
+        MIN_LEVEL: ${{ inputs.min-level }}
+        BASE_MATCH: ${{ steps.base.outputs.matches }}
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
         LINT: ${{ inputs.lint }}
@@ -122,8 +146,10 @@ runs:
           ''|auto) lint=(--lint=) ;;
           *) lint=("--lint=$LINT") ;;
         esac
+        level=(--min-level "${MIN_LEVEL:-E2}")
+        [ "$BASE_MATCH" = "true" ] && level+=(--proof-matches-base)
         if [ -n "$RESULTS" ]; then
-          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${lint[@]}"
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${lint[@]}" "${level[@]}"
         else
           echo "No results input; using ledgers already in $DIR."
         fi
@@ -133,6 +159,8 @@ runs:
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
+        RESULTS: ${{ inputs.results }}
+        MIN_LEVEL: ${{ inputs.min-level }}
       run: node "$GITHUB_ACTION_PATH/scripts/action-outputs.mjs"
 
     - name: Gate
@@ -143,6 +171,8 @@ runs:
         RESULTS: ${{ inputs.results }}
         REQUIRED: ${{ steps.issues.outputs.required }}
         LINT: ${{ inputs.lint }}
+        MIN_LEVEL: ${{ inputs.min-level }}
+        BASE_MATCH: ${{ steps.base.outputs.matches }}
       run: |
         lint=()
         case "$LINT" in
@@ -153,9 +183,10 @@ runs:
         # Gate from the results ingested in THIS job, never from a committed ledger.
         # Every issue the PR links must have its own proof file.
         if [ "$GATE" = "true" ]; then
-          extra=()
+          extra=(--min-level "${MIN_LEVEL:-E2}")
           [ -n "$REQUIRED" ] && extra+=(--require-issues "$REQUIRED")
           if [ -n "$RESULTS" ]; then
+            [ "$BASE_MATCH" = "true" ] && extra+=(--proof-matches-base)
             node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "${lint[@]}" "$DIR"
           else
             echo "::warning::okproof: No results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."

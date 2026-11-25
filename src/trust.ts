@@ -15,6 +15,7 @@ import { parseJUnit } from './junit.js';
 import { lintOutcomes } from './lint.js';
 import { parseProof } from './proof.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
+import { readAdversarial, type EvidenceLevel } from './evidence.js';
 
 export type ResultsFormat = 'junit' | 'ctrf';
 
@@ -49,7 +50,7 @@ async function proofNames(dir: string): Promise<string[]> {
 export async function ledgersFromResults(
   dir: string,
   resultsFile: string,
-  opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; report?: (line: string) => void } = {},
+  opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; report?: (line: string) => void; minLevel?: EvidenceLevel; proofMatchesBase?: boolean } = {},
 ): Promise<Ledger[]> {
   const text = await readFile(resultsFile, 'utf8');
   let outcomes = parseResults(text, resultsFile, opts.format);
@@ -69,7 +70,14 @@ export async function ledgersFromResults(
     } catch {
       continue; // evaluateGate reports the unparseable file
     }
-    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: opts.strictAssertions }), results_sha256, proof_sha256: sha256Hex(source) };
+    // Built here from a results file read in this job, so this is the one place E4 can be attested.
+    const built = buildLedger(proof, outcomes, {
+      strictAssertions: opts.strictAssertions,
+      minLevel: opts.minLevel,
+      adversarial: await readAdversarial(dir, proof),
+      ci: { resultsBound: true, proofMatchesBase: opts.proofMatchesBase === true },
+    });
+    let ledger: Ledger = { ...built, results_sha256, proof_sha256: sha256Hex(source) };
     // A confirmed verifier refutation can only make a criterion fail, never pass.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified) ledger = applyVerifyFile(ledger, verified);
@@ -168,7 +176,7 @@ export function parseGateArgs(list: string[]): GateArgs {
 }
 
 /** `okproof gate`: returns the exit code. */
-export async function runGate(list: string[], opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest }): Promise<number> {
+export async function runGate(list: string[], opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; minLevel?: EvidenceLevel; proofMatchesBase?: boolean }): Promise<number> {
   let a: GateArgs;
   try {
     a = parseGateArgs(list);
@@ -180,6 +188,10 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
     console.error('--lint needs --results: lint marks tests from a test run, and there is no run to mark.');
     return 2;
   }
+  if (opts.proofMatchesBase && a.results === undefined) {
+    console.error('--proof-matches-base needs --results: E4 is only attested for a ledger rebuilt from the test results of this job.');
+    return 2;
+  }
   let ledgers: Ledger[] | undefined;
   if (a.results !== undefined) {
     try {
@@ -189,7 +201,7 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
       return 2;
     }
   }
-  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, ledgers });
+  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, ledgers, minLevel: opts.minLevel });
   const extra = [...(await proofNameProblems(a.dir)), ...(await requiredIssueProblems(a.dir, a.requireIssues))];
   for (const n of result.notes) console.log(n);
   if (a.results === undefined) for (const w of await unboundLedgerWarnings(a.dir)) console.error(w);
