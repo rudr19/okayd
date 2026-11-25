@@ -12,6 +12,7 @@ import {
   lastLines,
   overlay,
   repoRoot,
+  realOrResolved,
   resolveRevisions,
   resultsRelative,
   runTests,
@@ -104,7 +105,7 @@ export async function runDifferential(opts: DiffOptions): Promise<DiffResult> {
   };
   const root = repoRoot(cwd);
   const dirAbs = resolve(cwd, opts.dir ?? '.okproof');
-  const proofDirRel = relative(root, dirAbs).replace(/\\/g, '/');
+  const proofDirRel = relative(realOrResolved(root), realOrResolved(dirAbs)).replace(/\\/g, '/');
   if (proofDirRel.startsWith('..')) throw new Error(`The proof folder ${dirAbs} is outside the repository.`);
   const proofs = await proofsIn(dirAbs, opts.issue?.replace(/^#/, ''));
   const resultsRel = resultsRelative(root, cwd, opts.results);

@@ -7,7 +7,8 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, rm, rmdir, symlink, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { parseCTRF } from './ctrf.js';
 import { parseJUnit } from './junit.js';
 import type { TestOutcome } from './ledger.js';
@@ -324,3 +325,20 @@ export async function runTests(tree: string, command: string, resultsRel: string
 }
 
 export const lastLines = (s: string, n = 8): string => s.trimEnd().split(/\r?\n/).slice(-n).join('\n');
+
+/**
+ * The real, long-form path (resolves Windows 8.3 short names like RUNNER~1 and
+ * symlinks) so "is this inside the repo?" compares like with like. Falls back to
+ * the parent's real path for a path that doesn't exist yet.
+ */
+export function realOrResolved(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    try {
+      return join(realpathSync.native(dirname(p)), basename(p));
+    } catch {
+      return resolve(p);
+    }
+  }
+}

@@ -7,7 +7,7 @@ branding:
 
 inputs:
   results:
-    description: Path to a JUnit XML or CTRF JSON file from your test run in this job. Required unless allow-committed-ledgers is true: without it the gate would trust committed ledger files, which anyone who can commit can forge.
+    description: 'Path to a JUnit XML or CTRF JSON file from your test run in this job. Required unless allow-committed-ledgers is true; without it the gate would trust committed ledger files, which anyone who can commit can forge.'
     required: false
     default: ''
   allow-committed-ledgers:
