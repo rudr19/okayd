@@ -7,9 +7,13 @@ branding:
 
 inputs:
   results:
-    description: Path to a JUnit XML file from your test run. Optional if ledgers were already written by the okproof reporter.
+    description: 'Path to a JUnit XML or CTRF JSON file from your test run in this job. Required unless allow-committed-ledgers is true; without it the gate would trust committed ledger files, which anyone who can commit can forge.'
     required: false
     default: ''
+  allow-committed-ledgers:
+    description: 'Let the gate run without a results input and trust the ledger files already committed in the proof folder. "true" or "false". Off by default because a committed ledger can be written by hand.'
+    required: false
+    default: 'false'
   dir:
     description: Folder holding the proof files and ledgers.
     required: false
@@ -34,16 +38,56 @@ inputs:
     description: 'Fail the gate when a linked issue ("Closes #N" in the PR body, or the issue input) has no proof file named for it. "true" or "false". Set false only if your PRs close issues okproof does not track.'
     required: false
     default: 'true'
+  require-linked-proof:
+    description: 'Fail when the pull request adds or changes a proof file whose issue is not linked in the PR body ("Closes #N"). "true" or "false". Empty (default) follows require-linked. A changed, unlinked proof file always produces a warning.'
+    required: false
+    default: ''
+  require-verify:
+    description: 'Fail the gate for every proof file unless verify-<issue>.json exists (the okproof verify output). "true" or "false". A "{verify}" flag in a proof file heading does the same for that file.'
+    required: false
+    default: 'false'
+  allow-empty:
+    description: 'Pass when the pull request has no proof files at all. "true" or "false". Use this for a required check that runs on every PR: do not filter the workflow with on.pull_request.paths, because a skipped required check blocks the merge. Linked issues still need their proof file (require-linked).'
+    required: false
+    default: 'false'
   lint:
-    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
+    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven; a real assertion lint finds replaces an unknown assertion count. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
     required: false
     default: auto
+  differential:
+    description: 'Differential proof (zero tokens). "on" runs your tests on the PR base and on HEAD and fails criteria whose tests also pass on the base, so they do not prove the change; "off" skips it. Needs test-command and results, and a checkout with fetch-depth: 0.'
+    required: false
+    default: 'off'
+  test-command:
+    description: 'The command that runs your tests and writes the results file (required when differential is on). It runs through the shell in a temporary checkout of the base and of HEAD, with OKPROOF_SIDE set to base or head.'
+    required: false
+    default: ''
+  min-level:
+    description: 'Evidence level (E0 to E4) a criterion must reach when its proof line names none, for example {E3}. E2 means a clean tagged test with a real assertion; E3 adds adversarial verification (okproof verify); E4 adds proof produced in this CI job on a commit whose proof folder matches the base branch. See "Evidence levels" in the README.'
+    required: false
+    default: E2
+  base-ref:
+    description: 'Branch the proof folder is compared with to allow E4. Default: the pull request base. Empty (not a pull request) means E4 is never granted.'
+    required: false
+    default: ${{ github.base_ref }}
+  strict-assertions:
+    description: 'Treat a test whose runner reported no assertion count as weak, unless lint found a real assertion in it. "true" (default) or "false".'
+    required: false
+    default: 'true'
+  strict-relevance:
+    description: 'Fail when a tagged test never mentions its criterion, or claims more criteria than max-claims. "true" (default) or "false" (advisory only).'
+    required: false
+    default: 'true'
+  max-claims:
+    description: 'Most criteria one test may claim before lint flags it. Empty means the okproof default (3).'
+    required: false
+    default: ''
   node-version:
     description: Node.js version used to run okproof.
     required: false
     default: '22'
   github-token:
-    description: Token used to post the pull request comment. The job needs pull-requests write permission.
+    description: Token used to post the pull request comment and to list the pull request files. The job needs pull-requests write permission to comment.
     required: false
     default: ${{ github.token }}
 
@@ -52,7 +96,7 @@ outputs:
     description: '"true" if every ledger is proven, otherwise "false".'
     value: ${{ steps.outputs.outputs.proven }}
   summary:
-    description: One line per proof file, for example "okproof #142: 4/4 criteria met, proven".
+    description: 'One line per proof file, for example "okproof #142: 4/4 criteria met, proven".'
     value: ${{ steps.outputs.outputs.summary }}
 
 runs:
@@ -61,6 +105,25 @@ runs:
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: ${{ inputs.node-version }}
+
+    # Every input is read once here and handed to the CLI as OKPROOF_* variables.
+    - name: Resolve options
+      id: options
+      shell: bash
+      env:
+        GATE: ${{ inputs.gate }}
+        RESULTS: ${{ inputs.results }}
+        ALLOW_COMMITTED: ${{ inputs.allow-committed-ledgers }}
+        STRICT_ASSERTIONS: ${{ inputs.strict-assertions }}
+        STRICT_RELEVANCE: ${{ inputs.strict-relevance }}
+        ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        REQUIRE_LINKED: ${{ inputs.require-linked }}
+        REQUIRE_LINKED_PROOF: ${{ inputs.require-linked-proof }}
+        REQUIRE_VERIFY: ${{ inputs.require-verify }}
+        LINT: ${{ inputs.lint }}
+        MAX_CLAIMS: ${{ inputs.max-claims }}
+        DIR: ${{ inputs.dir }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-options.mjs"
 
     - name: Install okproof
       shell: bash
@@ -102,30 +165,69 @@ runs:
         exit $status
 
     - name: Check proof files
+      if: steps.options.outputs.empty != 'true'
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/dist/src/cli.js" check "$DIR"
 
-    - name: Build ledgers from JUnit XML
+    - name: Compare proof folder with the base branch
+      id: base
       shell: bash
       env:
+        BASE_REF: ${{ inputs.base-ref }}
+        DIR: ${{ inputs.dir }}
+      run: |
+        # E4 needs .okproof/ identical to the base branch, so a pull request cannot change what it is judged against.
+        match=false
+        if [ -n "$BASE_REF" ] && git fetch --no-tags --depth=1 origin "refs/heads/$BASE_REF" >/dev/null 2>&1; then
+          if git diff --quiet FETCH_HEAD HEAD -- "$DIR" 2>/dev/null; then match=true; fi
+        fi
+        echo "matches=$match" >> "$GITHUB_OUTPUT"
+
+    - name: Differential proof
+      shell: bash
+      env:
+        DIFFERENTIAL: ${{ inputs.differential }}
+        TEST_COMMAND: ${{ inputs.test-command }}
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
-        LINT: ${{ inputs.lint }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        case "$DIFFERENTIAL" in
+          off|'') exit 0 ;;
+          on) ;;
+          *) echo "differential must be off or on, got: $DIFFERENTIAL" >&2; exit 2 ;;
+        esac
+        if [ -z "$TEST_COMMAND" ] || [ -z "$RESULTS" ]; then
+          echo "differential: on needs the test-command and results inputs." >&2
+          exit 2
+        fi
+        base=()
+        [ -n "$BASE_REF" ] && base=(--base "origin/$BASE_REF")
+        # Exit 1 means some criterion is not proven by the change; the Gate step reports it. Only a failure to run stops here.
+        rc=0
+        node "$GITHUB_ACTION_PATH/dist/src/cli.js" diff "${base[@]}" --test "$TEST_COMMAND" --results "$RESULTS" "$DIR" || rc=$?
+        [ "$rc" -le 1 ] || exit "$rc"
+
+    # The lint, strict-assertions, strict-relevance and max-claims settings reach the CLI as OKPROOF_* variables.
+    - name: Build ledgers from test results
+      if: steps.options.outputs.empty != 'true'
+      shell: bash
+      env:
+        MIN_LEVEL: ${{ inputs.min-level }}
+        BASE_MATCH: ${{ steps.base.outputs.matches }}
+        RESULTS: ${{ inputs.results }}
+        DIR: ${{ inputs.dir }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         OKPROOF_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
       run: |
-        lint=()
-        case "$LINT" in
-          off) ;;
-          ''|auto) lint=(--lint=) ;;
-          *) lint=("--lint=$LINT") ;;
-        esac
+        level=(--min-level "${MIN_LEVEL:-E2}")
+        [ "$BASE_MATCH" = "true" ] && level+=(--proof-matches-base)
         if [ -n "$RESULTS" ]; then
-          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${lint[@]}"
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${level[@]}"
         else
-          echo "No results input; using ledgers already in $DIR."
+          echo "No results input; using ledgers already in $DIR (allow-committed-ledgers)."
         fi
 
     - name: Set outputs
@@ -133,7 +235,17 @@ runs:
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
+        RESULTS: ${{ inputs.results }}
+        MIN_LEVEL: ${{ inputs.min-level }}
       run: node "$GITHUB_ACTION_PATH/scripts/action-outputs.mjs"
+
+    - name: Check that changed proof files are linked
+      shell: bash
+      env:
+        DIR: ${{ inputs.dir }}
+        ISSUE: ${{ inputs.issue }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-proof-links.mjs"
 
     - name: Gate
       shell: bash
@@ -142,23 +254,21 @@ runs:
         DIR: ${{ inputs.dir }}
         RESULTS: ${{ inputs.results }}
         REQUIRED: ${{ steps.issues.outputs.required }}
-        LINT: ${{ inputs.lint }}
+        MIN_LEVEL: ${{ inputs.min-level }}
+        BASE_MATCH: ${{ steps.base.outputs.matches }}
       run: |
-        lint=()
-        case "$LINT" in
-          off) ;;
-          ''|auto) lint=(--lint=) ;;
-          *) lint=("--lint=$LINT") ;;
-        esac
         # Gate from the results ingested in THIS job, never from a committed ledger.
         # Every issue the PR links must have its own proof file.
         if [ "$GATE" = "true" ]; then
-          extra=()
+          extra=(--min-level "${MIN_LEVEL:-E2}")
           [ -n "$REQUIRED" ] && extra+=(--require-issues "$REQUIRED")
+          [ "$OKPROOF_ALLOW_EMPTY" = "1" ] && extra+=(--allow-empty)
+          [ "$OKPROOF_REQUIRE_VERIFY" = "1" ] && extra+=(--require-verify)
           if [ -n "$RESULTS" ]; then
-            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "${lint[@]}" "$DIR"
+            [ "$BASE_MATCH" = "true" ] && extra+=(--proof-matches-base)
+            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "$DIR"
           else
-            echo "::warning::okproof: No results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
+            echo "::warning::okproof: allow-committed-ledgers is on and no results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
             node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "${extra[@]}" "$DIR"
           fi
         fi

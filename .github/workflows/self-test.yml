@@ -18,6 +18,7 @@ jobs:
         with:
           results: examples/action-fixture/junit.xml
           dir: examples/action-fixture/.okproof
+          lint: examples/action-fixture
           comment: 'false'
       - name: Assert the fixture is proven
         env:

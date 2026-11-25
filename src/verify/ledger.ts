@@ -37,6 +37,7 @@ export function applyVerifyFile(ledger: Ledger, file: VerifyFile): Ledger {
     const title = (finding?.title ?? 'confirmed bug').replace(/\|/g, '/').replace(/\s+/g, ' ');
     const repro = result.repro ?? `.okproof/repro/${result.criterionId}.json`;
     entry.verdict = 'failed';
+    entry.level = 0; // a confirmed refutation contradicts the criterion
     entry.tests.push({ title: `verifier [okproof:${entry.id}]`, status: 'failed', evidence: `refuted by verifier: ${title} (repro: ${repro})` });
   }
   ledger.proven = ledger.entries.every((e) => e.verdict === 'met');

@@ -1,5 +1,14 @@
 # What the gate trusts
 
+**The real control is CODEOWNERS plus required review.** okproof compares
+evidence with criteria, but it cannot stop someone with write access from
+editing the criteria, the workflow or the okproof settings, and it cannot make
+its own check required. Only repository settings can: a CODEOWNERS entry for
+`.okproof/` (and the workflow), "Require review from Code Owners", and the
+okproof job as a required status check. okproof cannot enforce those, so
+`okproof doctor` checks them for you (read-only) and says what is missing.
+Everything below describes what the gate believes once those are in place.
+
 okproof proves a pull request against its acceptance criteria. That only means
 something if the evidence cannot be written by the author of the pull request.
 This page says what the merge gate believes, and what it does not.

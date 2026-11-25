@@ -8,6 +8,8 @@ import { publishToGitHub } from './github.js';
 import { evaluateGate } from './gate.js';
 import { sha256Hex } from './trust.js';
 import { applyVerifyFile, criteriaHash, readVerifyFile } from './verify/ledger.js';
+import { applyTechniques } from './techniques.js';
+import { readAdversarial, type EvidenceLevel } from './evidence.js';
 
 export interface FinalizeOptions {
   /** Folder holding proof files. Default ".okproof". */
@@ -23,6 +25,10 @@ export interface FinalizeOptions {
   strictAssertions?: boolean;
   /** sha256 of the results file, recorded in each ledger as results_sha256. */
   resultsSha256?: string;
+  /** Level required of a criterion whose proof line names none. Default E2. */
+  minLevel?: EvidenceLevel;
+  /** The .okproof/ folder is identical to the base branch (the Action sets it); with a results file this allows E4. */
+  proofMatchesBase?: boolean;
 }
 
 export interface FinalizeResult {
@@ -42,21 +48,26 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
   for (const f of files) {
     const proofText = await readFile(join(dir, f), 'utf8');
     const proof = parseProof(proofText);
-    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: strict }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText) };
+    const adversarial = await readAdversarial(dir, proof);
+    const ci = { resultsBound: options.resultsSha256 !== undefined, proofMatchesBase: options.proofMatchesBase === true };
+    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: strict, minLevel: options.minLevel, adversarial, ci }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText) };
     // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified && verified.criteriaHash === criteriaHash(proof)) ledger = applyVerifyFile(ledger, verified);
     else if (verified) lines.push(`okproof #${ledger.issue}: verifier results are stale; re-run okproof verify or delete verify-${ledger.issue}.json (okproof gate will fail until then)`);
+    ledger = await applyTechniques(ledger, dir, proof);
     ledgers.push(ledger);
     await writeFile(join(dir, `ledger-${ledger.issue}.json`), JSON.stringify(ledger, null, 2));
     await writeFile(join(dir, `ledger-${ledger.issue}.md`), renderLedgerMarkdown(ledger));
     const met = ledger.entries.filter((e) => e.verdict === 'met').length;
     const unproven = ledger.entries.filter((e) => e.verdict === 'unproven').length;
     const weakNote = unproven > 0 ? `, ${unproven} unproven (no assertions)` : '';
-    lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
+    const short = ledger.entries.filter((e) => e.verdict === 'insufficient').length;
+    const levelNote = short > 0 ? `, ${short} below the required evidence level` : '';
+    lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}${levelNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
   }
   if (options.github !== false && ledgers.length > 0) {
-    const published = await publishToGitHub(ledgers, undefined, undefined, await evaluateGate(dir, { issue: options.issue }));
+    const published = await publishToGitHub(ledgers, undefined, undefined, await evaluateGate(dir, { issue: options.issue, ledgers, minLevel: options.minLevel }));
     if (published.comment !== 'skipped') lines.push(`okproof: pull request comment ${published.comment}`);
     else if (published.reason !== 'not running in GitHub Actions') lines.push(`okproof: no PR comment (${published.reason})`);
   }

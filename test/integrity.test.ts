@@ -206,15 +206,16 @@ test('editing the proof file invalidates the verify file hash', async () => {
   }
 });
 
-test('a repro file with no verify file is a note, not a failure', async () => {
+test('a repro file with no verify file fails the gate (deleting verify-<n>.json is not a bypass)', async () => {
   const dir = await project();
   try {
     await finalize(PASS, { dir, github: false });
     await mkdir(join(dir, 'repro'));
     await writeFile(join(dir, 'repro', '7.2.json'), '{}');
     const gate = await evaluateGate(dir);
-    assert.equal(gate.ok, true, gate.problems.join('\n'));
-    assert.match(gate.notes.join('\n'), /repro file exists for 7\.2 but verify-7\.json is missing/);
+    assert.equal(gate.ok, false);
+    assert.match(gate.problems.join('\n'), /repro file 7\.2\.json exists .* verify-7\.json is missing/);
+    assert.match(gate.problems.join('\n'), /git checkout|re-run okproof verify/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -8,6 +8,7 @@ import { finalize } from '../finalize.js';
 import { lintTests } from '../lint.js';
 import type { Ledger, LedgerEntry, Verdict } from '../ledger.js';
 import { evaluateGate, staleness } from '../gate.js';
+import { DEFAULT_MIN_LEVEL, asLevel, formatLevel, requiredLevel, shortfall } from '../evidence.js';
 
 export interface ToolContext {
   cwd: string;
@@ -150,8 +151,10 @@ function mergeLedger(proof: ProofFile, ledger: Ledger | undefined): Row[] {
   return proof.criteria.map((c) => {
     const found = ledger?.entries?.find((e) => e.id === c.id);
     const verdict: Verdict =
-      found && (found.verdict === 'met' || found.verdict === 'failed' || found.verdict === 'unproven') ? found.verdict : 'untested';
-    return { entry: { id: c.id, text: c.text, verdict, tests: found?.tests ?? [], weak: found?.weak } };
+      found && (found.verdict === 'met' || found.verdict === 'failed' || found.verdict === 'unproven' || found.verdict === 'insufficient') ? found.verdict : 'untested';
+    // The proof line sets the requirement; a ledger's own "required" is only what it was built with.
+    const required = requiredLevel(c, asLevel(found?.required) ?? DEFAULT_MIN_LEVEL);
+    return { entry: { id: c.id, text: c.text, verdict, tests: found?.tests ?? [], weak: found?.weak, level: asLevel(found?.level) ?? (found ? undefined : 0), required, gaps: Array.isArray(found?.gaps) ? found.gaps : undefined } };
   });
 }
 
@@ -176,7 +179,8 @@ const okproof_status: ToolDefinition = {
   description:
     'The definition of done. Call this BEFORE telling the user a task is finished. Reports, per issue, which acceptance criteria are ' +
     'proven (met), failed or untested, based on the ledger the test run wrote. The first line is the verdict ("Done" or "Not done"); ' +
-    'a "Next steps" list names every unmet criterion and its tag. Untested counts as not done, and so does "unproven" (the tagged tests passed but asserted nothing).',
+    'a "Next steps" list names every unmet criterion and its tag. Untested counts as not done, and so does "unproven" (the tagged tests passed but asserted nothing). ' +
+    'Each row shows its evidence level against the level it requires, e.g. [E2/E3 ▰▰▱]; "insufficient" means the tests pass but the criterion needs stronger evidence, and a "Raise the evidence" list gives the next step for each criterion.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -196,6 +200,7 @@ const okproof_status: ToolDefinition = {
     const warnings: string[] = [];
     const body: string[] = [];
     const next: string[] = [];
+    const raise: string[] = [];
     let total = 0;
     let met = 0;
     let broken = 0;
@@ -224,8 +229,15 @@ const okproof_status: ToolDefinition = {
       body.push(`#${p.proof.issue} ${p.proof.title}: ${issueMet} of ${rows.length} proven${ledger ? '' : ' (untested: no ledger yet — run the tests with the okproof reporter or `okproof ingest`)'}`);
       for (const { entry: e } of rows) {
         const evidence = e.tests.map((t) => (t.evidence ? `${t.status}, ${t.evidence}` : t.status)).join('; ');
-        body.push(`  ${e.verdict.toUpperCase()}  ${e.id} ${e.text}${evidence ? ` (${evidence})` : ''}`);
-        if (e.verdict !== 'met') {
+        const lvl = e.level !== undefined && e.required !== undefined ? ` [${formatLevel(e.level, e.required)}]` : '';
+        body.push(`  ${e.verdict.toUpperCase()}  ${e.id} ${e.text}${lvl}${evidence ? ` (${evidence})` : ''}`);
+        if (ledger && e.level !== undefined && e.level < 4 && e.verdict !== 'failed') {
+          const to = (e.level + 1) as 1 | 2 | 3 | 4;
+          raise.push(`${e.id} E${e.level} to E${to}${e.required !== undefined && to <= e.required ? ' (required)' : ''}: ${shortfall(e.id, e, e.level, to)}`);
+        }
+        if (e.verdict === 'insufficient') {
+          next.push(`${e.id} (insufficient, ${formatLevel(e.level ?? 0, e.required ?? 0)}): ${e.text} — ${shortfall(e.id, e, e.level ?? 0, (e.required ?? DEFAULT_MIN_LEVEL))}. The tests alone are not enough for this criterion.`);
+        } else if (e.verdict !== 'met') {
           const weakNames = (e.weak && e.weak.length > 0 ? e.weak : e.tests.map((t) => t.title)).join(', ');
           const why =
             e.verdict === 'failed'
@@ -251,6 +263,7 @@ const okproof_status: ToolDefinition = {
     const out = [head, '', ...body];
     if (warnings.length) out.push('Warnings:', ...warnings.map((w) => `- ${w}`), '');
     if (next.length) out.push('Next steps:', ...next.map((n) => `- ${n}`));
+    if (raise.length) out.push('', 'Raise the evidence (one level at a time):', ...raise.map((n) => `- ${n}`));
     return out.join('\n').trimEnd();
   },
 };

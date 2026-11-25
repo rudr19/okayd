@@ -1,12 +1,14 @@
 import { claimedCriteria, type ProofFile } from './proof.js';
+import { DEFAULT_MIN_LEVEL, formatLevel, gradeEvidence, requiredLevel, type Adversarial, type CiContext, type EvidenceLevel } from './evidence.js';
 
 /**
  * met       every claiming test passed and at least one made a real assertion
  * failed    a claiming test failed, was flaky, skipped, timed out, ...
  * unproven  claiming tests passed, but none of them asserted anything
  * untested  no test claims it
+ * insufficient  the tests would make it met, but its evidence level is below the level it requires
  */
-export type Verdict = 'met' | 'failed' | 'unproven' | 'untested';
+export type Verdict = 'met' | 'failed' | 'unproven' | 'untested' | 'insufficient';
 
 export interface TestOutcome {
   title: string;
@@ -16,6 +18,8 @@ export interface TestOutcome {
   evidence?: string;
   /** Assertions the test made. Undefined means the runner did not say. */
   assertions?: number;
+  /** Set by lint: criterion ids this test claims but shares no key word with. Such a test cannot lift those criteria to E2. */
+  unrelatedTo?: string[];
 }
 
 export interface LedgerEntry {
@@ -25,6 +29,12 @@ export interface LedgerEntry {
   tests: TestOutcome[];
   /** Titles of passing tests that asserted nothing. */
   weak?: string[];
+  /** Evidence level achieved (E0-E4). Absent on ledgers written before evidence levels. */
+  level?: EvidenceLevel;
+  /** Evidence level the proof line (or --min-level) required when the ledger was built. */
+  required?: EvidenceLevel;
+  /** gaps[i] is what is missing to reach level + 1 + i. */
+  gaps?: string[];
 }
 
 export interface Ledger {
@@ -42,6 +52,12 @@ export interface Ledger {
 export interface LedgerOptions {
   /** Treat a test whose assertion count is unknown as weak. Default false. */
   strictAssertions?: boolean;
+  /** Level required of a criterion whose proof line names none. Default E2. */
+  minLevel?: EvidenceLevel;
+  /** Adversarial evidence per criterion id (see readAdversarial). */
+  adversarial?: Map<string, Adversarial>;
+  /** Where the results came from; both parts must hold for E4. */
+  ci?: CiContext;
 }
 
 /** A test is weak when it is known to assert nothing (or, in strict mode, when that is not known). */
@@ -62,7 +78,12 @@ export function buildLedger(proof: ProofFile, outcomes: TestOutcome[], options: 
       else if (weak.length === tests.length) verdict = 'unproven';
       else verdict = 'met';
     }
-    const entry: LedgerEntry = { id: c.id, text: c.text, verdict, tests };
+    const grade = gradeEvidence({ id: c.id, base: verdict as 'met' | 'failed' | 'unproven' | 'untested', tests, weak, adversarial: options.adversarial?.get(c.id), ci: options.ci });
+    const required = requiredLevel(c, options.minLevel ?? DEFAULT_MIN_LEVEL);
+    // Met needs the evidence the criterion asks for, on top of the test rules.
+    if (verdict === 'met' && grade.level < required) verdict = 'insufficient';
+    const entry: LedgerEntry = { id: c.id, text: c.text, verdict, tests, level: grade.level, required };
+    if (grade.gaps.length > 0) entry.gaps = grade.gaps;
     if (weak.length > 0) entry.weak = weak;
     return entry;
   });
@@ -74,7 +95,7 @@ export function buildLedger(proof: ProofFile, outcomes: TestOutcome[], options: 
   };
 }
 
-const MARK: Record<Verdict, string> = { met: 'met', failed: 'FAILED', unproven: 'UNPROVEN (no assertions)', untested: 'untested' };
+const MARK: Record<Verdict, string> = { met: 'met', failed: 'FAILED', unproven: 'UNPROVEN (no assertions)', untested: 'untested', insufficient: 'INSUFFICIENT EVIDENCE' };
 
 /** Human label for a verdict, shared by the markdown ledger and other renderers. */
 export function verdictLabel(verdict: Verdict): string {
@@ -92,15 +113,19 @@ export function renderLedgerMarkdown(ledger: Ledger): string {
     '',
     `${ledger.proven ? 'Proven' : 'Not proven'}: ${met} of ${ledger.entries.length} criteria met.`,
     '',
-    '| Criterion | Verdict | Evidence |',
-    '| --- | --- | --- |',
+    '| Criterion | Verdict | Level | Evidence |',
+    '| --- | --- | --- | --- |',
     ...ledger.entries.map((e) => {
       let evidence = e.tests.map((t) => t.evidence).filter(Boolean).join(', ') || '—';
       if (e.verdict === 'unproven') {
         evidence = `weak tests, add a real assertion: ${(e.weak ?? e.tests.map((t) => t.title)).join(', ')}`;
       }
-      return `| ${pipes(`${e.id} ${e.text}`)} | ${MARK[e.verdict]} | ${pipes(evidence)} |`;
+      if (e.verdict === 'insufficient' && e.gaps?.[0]) evidence = `needs E${e.required}: ${e.gaps.slice(0, Math.max(1, (e.required ?? 0) - (e.level ?? 0))).join('; then ')}`;
+      const level = e.level === undefined || e.required === undefined ? '—' : formatLevel(e.level, e.required);
+      return `| ${pipes(`${e.id} ${e.text}`)} | ${MARK[e.verdict]} | ${level} | ${pipes(evidence)} |`;
     }),
+    '',
+    'Levels: E0 claimed · E1 a tagged test passed · E2 solid test · E3 survived adversarial verification · E4 proven in CI.',
   ];
   return lines.join('\n') + '\n';
 }

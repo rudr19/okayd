@@ -6,14 +6,24 @@ import { join } from 'node:path';
 import { parseProof, type ProofFile } from './proof.js';
 import type { Ledger } from './ledger.js';
 import { criteriaHash, readVerifyFile } from './verify/ledger.js';
+import { techniqueFindings } from './techniques.js';
+import { DEFAULT_MIN_LEVEL, effectiveLevel, requiredLevel, shortfall, type EvidenceLevel } from './evidence.js';
 
 export interface GateOptions {
   /** Pass when there is nothing to prove (no folder or no proof files). Default false. */
   allowEmpty?: boolean;
   /** Only check this issue (its proof file, ledger and verifier file). */
   issue?: string;
+  /** Fail when verify-<issue>.json is missing for every proof file (also set per proof file with a {verify} heading flag). */
+  requireVerify?: boolean;
   /** Ledgers rebuilt in memory from this job's test results (trust.ts). When set, committed ledgers are ignored. */
   ledgers?: Ledger[];
+  /** Accept criteria whose tests also pass on the base commit (okproof diff). */
+  allowPreexisting?: boolean;
+  /** Accept criteria whose tests stay green when the change is reverted (okproof revert-check). */
+  allowUncovered?: boolean;
+  /** Evidence level required of a criterion whose proof line names none. Default E2. */
+  minLevel?: EvidenceLevel;
 }
 
 export interface GateResult {
@@ -27,7 +37,16 @@ export interface GateResult {
 const exists = (p: string) => access(p).then(() => true, () => false);
 
 /** Verifier-file problems for one proof file (stale hash), plus an optional note. */
-async function verifyCheck(dir: string, proof: ProofFile): Promise<{ problem?: string; note?: string }> {
+/** Names of saved repro scripts for an issue (.okproof/repro/<issue>.*.json), by plain prefix match. */
+async function reproFiles(dir: string, issue: string): Promise<string[]> {
+  try {
+    return (await readdir(join(dir, 'repro'))).filter((n) => n.startsWith(`${issue}.`) && n.endsWith('.json')).sort();
+  } catch {
+    return [];
+  }
+}
+
+async function verifyCheck(dir: string, proof: ProofFile, requireVerify: boolean): Promise<{ problem?: string; note?: string }> {
   let file;
   try {
     file = await readVerifyFile(dir, proof.issue);
@@ -40,10 +59,13 @@ async function verifyCheck(dir: string, proof: ProofFile): Promise<{ problem?: s
     }
     return {};
   }
-  for (const c of proof.criteria) {
-    if (await exists(join(dir, 'repro', `${c.id}.json`))) {
-      return { note: `#${proof.issue}: a repro file exists for ${c.id} but verify-${proof.issue}.json is missing; refutations are not being applied. Re-run okproof verify.` };
-    }
+  // A missing verifier file must not hide a refutation: if a repro exists, the file was deleted (or never committed).
+  const repros = await reproFiles(dir, proof.issue);
+  if (repros.length > 0) {
+    return { problem: `#${proof.issue}: repro file ${repros[0]} exists in ${dir}/repro but verify-${proof.issue}.json is missing, so refutations are not being applied. Restore verify-${proof.issue}.json from git (git checkout -- ${dir}/verify-${proof.issue}.json) or re-run okproof verify.` };
+  }
+  if (requireVerify) {
+    return { problem: `#${proof.issue}: verification is required (${proof.requireVerify ? '{verify} in the proof file heading' : '--require-verify'}) but verify-${proof.issue}.json is missing. Run okproof verify --issue ${proof.issue} and commit the result, or restore the file.` };
   }
   return {};
 }
@@ -104,7 +126,11 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     }
     seen.add(proof.issue);
 
-    const v = await verifyCheck(dir, proof);
+    if (proof.placeholder) {
+      problems.push(`#${proof.issue}: ${f} is the placeholder written by okproof init; replace the example criteria with real ones (or run okproof sync --issue ${proof.issue}) and remove {placeholder} from the heading.`);
+      continue;
+    }
+    const v = await verifyCheck(dir, proof, options.requireVerify === true || proof.requireVerify === true);
     if (v.problem) problems.push(v.problem);
     if (v.note) notes.push(v.note);
 
@@ -133,11 +159,22 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     }
     // Verdict from the entries themselves, in the proof file's order.
     const entries = new Map(ledger.entries.map((e) => [e.id, e]));
-    const unmet = proof.criteria.filter((c) => entries.get(c.id)?.verdict !== 'met');
+    // The proof file sets the required level, never the ledger. Only a ledger rebuilt in this job
+    // from its results can be credited with E4.
+    const minLevel = options.minLevel ?? DEFAULT_MIN_LEVEL;
+    const unmet = proof.criteria.filter((c) => {
+      const e = entries.get(c.id);
+      if (e?.verdict === 'met' || e?.verdict === 'insufficient') return effectiveLevel(e, injected !== undefined) < requiredLevel(c, minLevel);
+      return true;
+    });
     if (unmet.length > 0) {
       for (const c of unmet) {
-        const e = entries.get(c.id) as { verdict?: string; weak?: string[] } | undefined;
-        if (e?.verdict === 'unproven') {
+        const e = entries.get(c.id) as { verdict?: string; weak?: string[]; level?: unknown; gaps?: unknown } | undefined;
+        if (e?.verdict === 'met' || e?.verdict === 'insufficient') {
+          const level = effectiveLevel(e, injected !== undefined);
+          const required = requiredLevel(c, minLevel);
+          problems.push(`#${proof.issue} criterion ${c.id} has E${level} evidence but requires E${required}: ${shortfall(c.id, e, level, required)}. ${c.text}`);
+        } else if (e?.verdict === 'unproven') {
           problems.push(`#${proof.issue} criterion ${c.id} is UNPROVEN (no assertions): add a real assertion to ${(e.weak ?? []).join(', ') || 'its tagged tests'}. ${c.text}`);
         } else {
           problems.push(`#${proof.issue} criterion ${c.id} is ${e?.verdict ?? 'untested'}: ${c.text}`);
@@ -146,6 +183,8 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     } else {
       notes.push(`#${proof.issue}: ${proof.criteria.length}/${proof.criteria.length} criteria met`);
     }
+    // Differential and revert-check results, when present, can fail a criterion the tests call met.
+    for (const f of await techniqueFindings(dir, proof, options)) problems.push(f.message);
   }
 
   // A ledger with no proof file means a proof file was deleted.

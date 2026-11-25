@@ -39,7 +39,9 @@ export function renderComment(ledgers: Ledger[], gate?: Pick<GateResult, 'ok' | 
   const note = unproven.length
     ? ['', `Silence is not proof: ${unproven.join(', ')} only passed tests that made no assertions. Add a real assertion to each tagged test.`]
     : [];
-  return [COMMENT_MARKER, head, ...why, ...note, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
+  const short = ledgers.flatMap((l) => l.entries.filter((e) => e.verdict === 'insufficient').map((e) => `#${l.issue} ${e.id} (E${e.level ?? 0} of E${e.required ?? 0})`));
+  const levelNote = short.length ? ['', `Below the evidence level the criterion requires: ${short.join(', ')}. The Evidence column says what is missing.`] : [];
+  return [COMMENT_MARKER, head, ...why, ...note, ...levelNote, '', ...ledgers.map(renderLedgerMarkdown)].join('\n');
 }
 
 /** The pull request number from the event payload, or from refs/pull/N/merge. */

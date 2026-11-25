@@ -24,6 +24,12 @@ export interface VerifyResult {
   repro?: string;
   steps: number;
   usage: { input: number; output: number };
+  /** input + output tokens this criterion used. */
+  tokens?: number;
+  /** The token limit it was held to (0: none). */
+  budgetTokens?: number;
+  /** Probes that matched this criterion's wording (set when probes ran). */
+  probes?: string[];
 }
 
 export interface VerifyFile {

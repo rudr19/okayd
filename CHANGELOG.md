@@ -6,6 +6,37 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Added
+
+- `okproof diff --base <ref> --test <command> --results <file>`: differential proof. Runs the PR's tests on the merge base and on HEAD in temporary git worktrees (zero tokens, no model). A criterion is `proven-by-change`, `not-differential` (passes on both: not met, unless the criterion carries the `pre` token, or `--allow-preexisting`), `regressed` or `failing`. Writes `.okproof/diff-<issue>.json`; the gate and ledger honour it.
+- `okproof revert-check`: reverts each changed source file in a worktree and records which criteria's tests notice; a criterion whose tests stay green is `uncovered` (not met, unless `--allow-uncovered`). Writes `.okproof/revert-<issue>.json`.
+- Action inputs `differential` (`off`/`on`) and `test-command`. Needs `fetch-depth: 0`.
+- `okproof gate --allow-preexisting --allow-uncovered`.
+- Evidence levels E0 to E4 (README, "Evidence levels"). Ledger entries carry `level`, `required` and `gaps`; a criterion is met only when its level reaches the level it requires. A criterion line can require a level with a `{E3}` token, combinable with `{#id}` and `pre` (`{#pay E3 pre}`); the default is E2, set with `--min-level` or the Action's `min-level` input. The ledger table and PR comment gain a Level column (`E2/E3 ▰▰▱`), gate messages say what evidence is missing, and `okproof_status` shows levels and the next step to raise each. New verdict `insufficient`. E3 reads optional `verify-<n>.json`, `diff-<n>.json` and `revert-<n>.json`; E4 is attested only by `gate --results` with `--proof-matches-base` (the Action passes it when `.okproof/` matches the base branch).
+- Verifier cost: snapshot diffs after the first view (full snapshot at least every fifth view), a per-criterion token budget (`--budget-tokens`, default 20000, 0 for none; an over-budget run is `inconclusive`), tokens per criterion in `verify-<n>.json` and the CLI output.
+
+- Zero-token probes: `okproof verify` now runs deterministic probes first (persistence, back-forward, double-submit, narrow-viewport, keyboard, offline, hostile-input), each replay-confirmed with no model, and calls the model only for criteria no probe refuted. `--probes-only` runs just the probes and needs no key; `--no-probes` restores model-only behaviour. See the README section "Zero-token probes".
+- Driver: `page.goto(url, { waitUntil: 'load' | 'domcontentloaded' | 'networkidle', timeoutMs })` and `okproof verify --wait-until`. A page that does not finish loading fails with the event it waited for and what to try instead. `page.doubleClick(ref)` and `page.requests()` were added too.
+- `okproof doctor [--repo owner/name] [--dir d] [--check job] [--no-network]`: read-only checks that CODEOWNERS covers `.okproof/`, branch protection or a ruleset requires the okproof check and code-owner review, `.gitignore` ignores ledgers, and the workflow passes `results` (and `fetch-depth` when differential is on). Exit 1 on a failure.
+- Gate: `{verify}` in a proof file heading and `--require-verify` make `verify-<issue>.json` mandatory.
+- Action inputs: `allow-committed-ledgers`, `strict-assertions`, `strict-relevance`, `max-claims`, `allow-empty`, `require-linked-proof`, `require-verify`. The CLI reads the matching `OKPROOF_LINT`, `OKPROOF_STRICT_ASSERTIONS`, `OKPROOF_STRICT_RELEVANCE`, `OKPROOF_MAX_CLAIMS` variables.
+- `okproof lint --max-claims N`: a test claiming more than N criteria (default 3) is reported `OVERCLAIM`; with `--strict-relevance` it fails.
+- `okproof init` prints a copy-paste tag example for the chosen runner.
+- `.gitattributes` (LF everywhere) and a Windows job in CI.
+
+### Changed
+
+- JUnit parsing uses a linear-time XML tokenizer instead of regular expressions: quoted attributes containing `>` or `/`, comments (a `<testcase>` inside a comment no longer counts), CDATA, processing instructions, DOCTYPE, entities, namespaces and nested suites. Results files over 50 MB (JUnit and CTRF) are refused with a clear error.
+- The gate fails (it used to note) when a repro exists for an issue but `verify-<issue>.json` is missing.
+- The proof file written by `okproof init` is marked `{placeholder}` and fails the gate until its example criteria are replaced.
+- The Action fails when no `results` input is given (set `allow-committed-ledgers: true` to keep the old behaviour), treats unknown assertion counts as weak and enables strict relevance by default. When lint finds a real assertion in a test whose runner reported no count, the count becomes positive.
+- Lint treats as weak: constant-only comparisons, `toBeDefined`/`toBeTruthy`/`not.toBeNull` on fixtures (`page`, `browser`, `driver`, ...), `expect.assertions(0)`, assertions in dead code, in functions the test never calls, or in a `try/catch` that swallows the failure.
+- README no longer states "made a real assertion" as fact: it depends on runner counts and heuristic lint. docs/trust.md opens with the trust model (CODEOWNERS and required review are the real control).
+- The Action parses its inputs once (`scripts/action-options.mjs`) instead of in each step.
+- With `--lint`, a passing test that lint calls "possibly unrelated" now holds its criterion at E1, which fails the default E2 requirement (it was advisory before). Use `{E1}` on a criterion, `--min-level E1`, or fix the test.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

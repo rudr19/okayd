@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Evidence levels (E0-E4, see README): --min-level <E0..E4> sets the level a criterion needs when its proof line names none (default E2);
+// --proof-matches-base (ingest, and gate with --results) says .okproof/ is identical to the base branch, which allows E4.
 // okproof check  [dir] [--issue-body <file> [--issue N]]
 //                                 validate proof files and print each criterion's tag;
 //                                 with --issue-body, fail if the issue's checkboxes differ
@@ -13,9 +15,13 @@
 //                                 exit 1 unless every proof file has a fresh, fully met ledger;
 //                                 with --results, ledgers are rebuilt in memory from the test results
 //                                 and committed ledgers are ignored
-// okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
+// okproof lint   [--tests <path>] [--strict-relevance] [--max-claims N] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion or claiming more than N criteria (default 3)
 // okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]
 //                                 scaffold .okproof/, and optionally CI and agent files; never overwrites
+// okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir]
+//                                 differential proof: run the tests on the base and on HEAD; a test that passes on both proves nothing
+// okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir]
+//                                 revert each changed source file and see which criteria's tests notice
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -23,36 +29,65 @@ import { parseProof, compareToIssueBody } from './proof.js';
 import { fetchIssue, syncProofFile, describeSync } from './sync.js';
 import { parseResults, runGate, sha256Hex, type LintRequest } from './trust.js';
 import { finalize } from './finalize.js';
+import { readResultsFile } from './results-file.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { DEFAULT_BUDGET_TOKENS } from './verify/agent.js';
+import { runProbesCli } from './verify/probe-cli.js';
+import { WAIT_UNTIL_VALUES, type WaitUntil } from './driver/index.js';
 import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
+import { runDiffCommand, runRevertCommand } from './techcli.js';
+import { DEFAULT_MIN_LEVEL, parseLevel, type EvidenceLevel } from './evidence.js';
+import { repoFromRemote, runDoctor } from './doctor.js';
+import { spawnSync } from 'node:child_process';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [--max-claims N] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir] | okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir] | okproof doctor [--repo owner/name] [--dir .okproof] [--check <job name>] [--no-network] | okproof mcp | okproof verify --url <baseUrl> [--probes-only | --no-probes] [--wait-until load|domcontentloaded|networkidle] [--max-steps n] [--budget-tokens n] [--model id] [options]. Any command that builds or checks ledgers also takes --min-level E0..E4 (default E2); ingest and gate --results take --proof-matches-base';
 const argv = process.argv.slice(2);
-const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance });
+const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance, ...(maxClaims !== undefined ? { maxClaims } : {}) });
 let format: string | undefined;
 let tests: string | undefined;
 let strictAssertions = process.env.OKPROOF_STRICT_ASSERTIONS === '1';
 let strictRelevance = false;
+let maxClaims: number | undefined;
 /** --lint [path]: true for bare --lint, a string for --lint=<path> or --lint <path>. */
 let lintFlag: string | true | undefined;
+let minLevelFlag: string | undefined = process.env.OKPROOF_MIN_LEVEL || undefined;
+let proofMatchesBase = process.env.OKPROOF_PROOF_MATCHES_BASE === '1';
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--strict-assertions') strictAssertions = true;
   else if (argv[i] === '--strict-relevance') strictRelevance = true;
+  else if (argv[i] === '--max-claims' || argv[i].startsWith('--max-claims=')) {
+    const raw = argv[i] === '--max-claims' ? argv[++i] : argv[i].slice('--max-claims='.length);
+    if (raw === undefined || !/^[1-9]\d{0,5}$/.test(raw)) {
+      console.error(`--max-claims needs a positive whole number. ${USAGE}`);
+      process.exit(2);
+    }
+    maxClaims = Number(raw);
+  }
   else if (argv[i] === '--lint') {
     // A following word that is not a flag is the test path or glob. Put the proof folder before --lint, or write --lint=<path>.
     const nxt = argv[i + 1];
     lintFlag = nxt !== undefined && !nxt.startsWith('-') ? argv[++i] : true;
   } else if (argv[i].startsWith('--lint=')) lintFlag = argv[i].slice('--lint='.length) || true;
+  else if (argv[i] === '--min-level') minLevelFlag = argv[++i];
+  else if (argv[i].startsWith('--min-level=')) minLevelFlag = argv[i].slice('--min-level='.length);
+  else if (argv[i] === '--proof-matches-base') proofMatchesBase = true;
   else if (argv[i] === '--tests') tests = argv[++i];
   else if (argv[i].startsWith('--tests=')) tests = argv[i].slice('--tests='.length);
   else if (argv[i] === '--format') format = argv[++i];
   else if (argv[i].startsWith('--format=')) format = argv[i].slice('--format='.length);
   else args.push(argv[i]);
+}
+// The GitHub Action sets these once (scripts/action-options.mjs); a command-line flag wins.
+if (process.env.OKPROOF_STRICT_RELEVANCE === '1') strictRelevance = true;
+if (maxClaims === undefined && /^[1-9]\d{0,5}$/.test(process.env.OKPROOF_MAX_CLAIMS ?? '')) maxClaims = Number(process.env.OKPROOF_MAX_CLAIMS);
+if (lintFlag === undefined) {
+  const fromEnv = process.env.OKPROOF_LINT;
+  if (fromEnv !== undefined && fromEnv !== '' && fromEnv !== 'off') lintFlag = fromEnv === 'auto' ? true : fromEnv;
 }
 
 // okproof verify --url <baseUrl> [--issue N] [--dir .okproof] [--max-steps 15] [--model id] [--effort e] [--replay-only]
@@ -95,8 +130,17 @@ async function runVerify(): Promise<number> {
   const dir = str('dir') ?? '.okproof';
   const issue = str('issue');
   const url = str('url');
+  let waitUntil: WaitUntil | undefined;
+  if (f.has('wait-until')) {
+    const w = str('wait-until');
+    if (!w || !(WAIT_UNTIL_VALUES as readonly string[]).includes(w)) {
+      console.error(`--wait-until must be one of: ${WAIT_UNTIL_VALUES.join(', ')}.`);
+      return 2;
+    }
+    waitUntil = w as WaitUntil;
+  }
   if (f.get('replay-only') === true) {
-    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, ...auth });
+    const results = await replayOnly({ dir, issue, baseUrl: url, chrome: process.env.OKPROOF_CHROME, waitUntil, ...auth });
     if (results.length === 0) {
       console.error(`No repro files in ${dir}/repro. Run okproof verify first.`);
       return 2;
@@ -113,6 +157,16 @@ async function runVerify(): Promise<number> {
     console.error(`Name the app to test with --url <baseUrl>. ${USAGE}`);
     return 2;
   }
+  const budgetText = str('budget-tokens');
+  const budgetTokens = budgetText === undefined ? undefined : Number(budgetText);
+  if (budgetTokens !== undefined && !(Number.isInteger(budgetTokens) && budgetTokens >= 0)) {
+    console.error(`--budget-tokens needs a whole number of tokens (0 means no limit), got "${budgetText}". The default is ${DEFAULT_BUDGET_TOKENS}.`);
+    return 2;
+  }
+  const probesOnly = f.get('probes-only') === true;
+  if (probesOnly || f.get('no-probes') !== true) {
+    return runProbesCli({ dir, issue, url, auth, waitUntil, mode: probesOnly ? 'only' : 'first', model: str('model'), effort: str('effort') as Effort | undefined, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), budgetTokens });
+  }
   let model: AnthropicModel;
   try {
     model = new AnthropicModel({ model: str('model'), effort: str('effort') as Effort | undefined });
@@ -121,11 +175,14 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), budgetTokens, strictDetectors: f.has('strict-detectors'), waitUntil, ...auth, log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {
       console.log(`${r.criterionId}: ${r.verdict}${r.repro ? ` (repro: ${r.repro})` : ''}`);
+      const used = r.tokens ?? r.usage.input + r.usage.output;
+      console.log(`  tokens: ${used}${r.budgetTokens ? ` of ${r.budgetTokens}` : ''} (input ${r.usage.input}, output ${r.usage.output}), ${r.steps} step${r.steps === 1 ? '' : 's'}`);
+      if (r.outcome === 'budget') console.log('  stopped at the token budget, so the verdict is inconclusive. Raise --budget-tokens, or spend less with --max-steps or a smaller --model.');
       for (const x of r.findings) console.log(`  ${x.confirmed ? 'confirmed' : 'unconfirmed'} [${x.severity}] ${x.title}`);
       refuted ||= r.verdict === 'refuted';
     }
@@ -252,7 +309,32 @@ async function runInitCmd(): Promise<number> {
     return 2;
   }
 }
+/** okproof doctor: read-only checks of CODEOWNERS, branch protection, .gitignore and workflows. */
+async function runDoctorCmd(): Promise<number> {
+  const f = flags(args.slice(1));
+  const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  let repo = str('repo');
+  if (repo === undefined && f.get('no-network') !== true) {
+    const r = spawnSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' });
+    if (r.status === 0) repo = repoFromRemote(r.stdout);
+  }
+  const result = await runDoctor({
+    cwd: process.cwd(),
+    dir: str('dir'),
+    check: str('check'),
+    repo: f.get('no-network') === true ? undefined : repo,
+    token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
+    apiUrl: process.env.GITHUB_API_URL,
+  });
+  for (const l of result.lines) console.log(l);
+  return result.ok ? 0 : 1;
+}
 const cmd = args[0] ?? 'check';
+
+/** The --min-level flag (or OKPROOF_MIN_LEVEL) as a level; throws a message for a bad value. */
+function minLevel(): EvidenceLevel {
+  return minLevelFlag === undefined ? DEFAULT_MIN_LEVEL : parseLevel(minLevelFlag);
+}
 
 async function main(): Promise<number> {
   if (cmd === 'check') {
@@ -269,7 +351,7 @@ async function main(): Promise<number> {
       const proof = parseProof(await readFile(join(dir, name), 'utf8'));
       proofs.push(proof);
       console.log(`#${proof.issue} ${proof.title}`);
-      for (const c of proof.criteria) console.log(`  [okproof:${c.id}] ${c.text}`);
+      for (const c of proof.criteria) console.log(`  [okproof:${c.id}] ${c.text}${c.level !== undefined ? ` (requires E${c.level})` : ''}`);
     }
     if (bodyFile === undefined) return 0;
     const wanted = value('issue');
@@ -299,13 +381,13 @@ async function main(): Promise<number> {
       console.error(`Unknown --format "${format}". Use junit or ctrf. ${USAGE}`);
       return 2;
     }
-    const text = await readFile(file, 'utf8');
+    const text = await readResultsFile(file);
     let outcomes = parseResults(text, file, format);
     const lintReq = lintRequest();
     let lintFailed = false;
     if (lintReq) {
       const dir = args[2] ?? '.okproof';
-      const l = await lintOutcomes(outcomes, { dir: '.', tests: lintReq.tests, proofDir: dir, strictRelevance: lintReq.strictRelevance });
+      const l = await lintOutcomes(outcomes, { dir: '.', tests: lintReq.tests, proofDir: dir, strictRelevance: lintReq.strictRelevance, maxClaims: lintReq.maxClaims });
       outcomes = l.outcomes;
       for (const line of l.lines) console.log(line);
       lintFailed = !l.ok;
@@ -316,24 +398,29 @@ async function main(): Promise<number> {
       github: process.env.OKPROOF_NO_COMMENT !== '1',
       strictAssertions,
       resultsSha256: sha256Hex(text),
+      minLevel: minLevel(),
+      proofMatchesBase,
     });
     for (const line of lines) console.log(line);
     return lintFailed ? 1 : 0;
   }
   if (cmd === 'gate') {
-    return runGate(args.slice(1), { format, strictAssertions, lint: lintRequest() });
+    return runGate(args.slice(1), { format, strictAssertions, lint: lintRequest(), minLevel: minLevel(), proofMatchesBase });
   }
   if (cmd === 'lint') {
-    const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance });
+    const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance, maxClaims });
     for (const line of result.lines) console.log(line);
     return result.ok ? 0 : 1;
   }
+  if (cmd === 'diff') return runDiffCommand(args.slice(1), format);
+  if (cmd === 'revert-check') return runRevertCommand(args.slice(1), format);
   if (cmd === 'mcp') {
     await startMcpServer(process.stdin, process.stdout);
     return 0;
   }
   if (cmd === 'verify') return runVerify();
   if (cmd === 'init') return runInitCmd();
+  if (cmd === 'doctor') return runDoctorCmd();
   console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
 }
