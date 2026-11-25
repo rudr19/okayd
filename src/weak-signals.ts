@@ -9,7 +9,9 @@ import { removeTrivial } from './relevance.js';
 
 /** Anything that counts as an assertion. Applied to code with strings and comments blanked out. */
 export const ASSERTION =
-  /\bexpect\s*[.(]|\bassert|\.should\b|\bshould\s*\(|\bt\.(?:Error|Fatal)|\brequire\.|\.not\.to|\.to(?:Be|Equal|Have|Match|Throw|Contain|StrictEqual)|\bpytest\.raises/;
+  // Call forms only: assert(...), assert.ok(...), assertEqual(...), self.assert_called(...) and Python's `assert x` statement.
+  // A bare identifier that merely starts with "assert" (`const assertions = []`, `assertEqualCount`) is not an assertion.
+  /\bexpect\s*[.(]|\bassert(?:\s*\.\s*\w+){0,3}\s*\(|\bassert[A-Z_]\w*\s*\(|\bassert[ \t]+(?!from\b)[^\s=]|\.should\b|\bshould\s*\(|\bt\.(?:Error|Fatal)|\brequire\.|\.not\.to|\.to(?:Be|Equal|Have|Match|Throw|Contain|StrictEqual)|\bpytest\.raises/;
 
 /** Objects that exist in every test and say nothing about the app: asserting they are defined proves nothing. */
 export const FIXTURE_NAMES = new Set(['page', 'browser', 'context', 'browserContext', 'driver', 'app', 'client', 'request', 'server']);

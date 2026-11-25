@@ -10,6 +10,7 @@ interface PwTestCase {
   title: string;
   titlePath(): string[];
   id?: string;
+  location?: { file?: string };
 }
 
 interface PwStep {
@@ -66,7 +67,7 @@ export default class OkproofPlaywrightReporter {
     const trace = result.attachments.find((a) => a.name === 'trace' && a.path)?.path;
     const evidence = trace ?? `${status} in ${(result.duration / 1000).toFixed(1)}s`;
     const assertions = countAssertions(result.steps);
-    this.results.set(key, { title: test.title, status, evidence, ...(assertions !== undefined ? { assertions } : {}) });
+    this.results.set(key, { title: test.title, ...(test.location?.file ? { file: test.location.file } : {}), status, evidence, ...(assertions !== undefined ? { assertions } : {}) });
   }
 
   async onEnd(): Promise<void> {

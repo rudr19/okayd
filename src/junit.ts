@@ -147,6 +147,7 @@ function outcomeOf(t: Open): TestOutcome {
   const counted = attrs.assertions !== undefined && /^\d{1,9}$/.test(attrs.assertions.trim()) ? Number(attrs.assertions) : undefined;
   return {
     title: attrs.name ?? '',
+    ...(attrs.file ? { file: attrs.file } : {}),
     status,
     evidence: `${status}${seconds !== undefined && !Number.isNaN(seconds) ? ` in ${seconds.toFixed(1)}s` : ''}${where}`,
     ...(counted !== undefined ? { assertions: counted } : {}),

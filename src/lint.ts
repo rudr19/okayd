@@ -674,6 +674,35 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
 
 const norm = (s: string): string => stripTags(s).toLowerCase();
 
+const slashes = (p: string): string => p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+
+/** True unless both sides name a file and they are different files (one path may be relative to a different root). */
+function sameFile(found: string, outcomeFile: string | undefined): boolean {
+  if (outcomeFile === undefined || outcomeFile === '') return true;
+  const a = slashes(found);
+  const b = slashes(outcomeFile);
+  return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+}
+
+/**
+ * How a test the lint read (its own title, tags removed) matches a runner's outcome title.
+ * 'exact': the same title. 'near': the runner added a describe prefix ("suite > name", "suite name") or a
+ * parameter/subtest suffix ("name[1]", "name/sub"). Never a plain substring: a weak test called "login"
+ * must not match the strong test "login works".
+ */
+export function matchTestName(name: string, title: string): 'exact' | 'near' | undefined {
+  const n = norm(name).trim();
+  const t = norm(title).trim();
+  if (n === '') return 'near'; // a finding with no name matches by tag alone
+  if (t === n) return 'exact';
+  if (t.endsWith(n)) {
+    const before = t.slice(0, t.length - n.length);
+    if (/[\s>/:.|\u203a-]$/.test(before)) return 'near';
+  }
+  if (t.startsWith(n) && '[(/'.includes(t.charAt(n.length))) return 'near';
+  return undefined;
+}
+
 /**
  * Mark the outcomes lint found weak as having asserted nothing (assertions = 0),
  * so their criterion becomes "unproven" instead of "met". Matched by the
@@ -690,21 +719,29 @@ export function applyLintToOutcomes(
 ): { outcomes: TestOutcome[]; marked: string[]; upgraded: string[] } {
   const marked: string[] = [];
   const upgraded: string[] = [];
-  const matches = (list: LintFinding[], ids: string[], title: string): LintFinding | undefined =>
-    list.find((f) => {
-      if (!f.ids.some((id) => ids.includes(id))) return false;
-      const name = f.name === undefined ? '' : norm(f.name);
-      return name === '' || title.includes(name) || (title !== '' && name.includes(title));
-    });
   const result = outcomes.map((o) => {
     const ids = claimedCriteria(o.title);
     if (ids.length === 0) return o;
-    const title = norm(o.title);
-    const hit = matches(weak, ids, title);
+    // Identity is the full title (and the file, when both sides say): the tests lint read that this outcome could be.
+    let near: { f: LintFinding; weak: boolean; kind: 'exact' | 'near' }[] = [];
+    for (const [list, isWeak] of [[weak, true], [asserting, false]] as const) {
+      for (const f of list) {
+        if (!f.ids.some((id) => ids.includes(id)) || !sameFile(f.file, o.file)) continue;
+        const kind = matchTestName(f.name ?? '', o.title);
+        if (kind) near.push({ f, weak: isWeak, kind });
+      }
+    }
+    // An exact title match beats any near one.
+    if (near.some((c) => c.kind === 'exact')) near = near.filter((c) => c.kind === 'exact');
+    const weakHit = near.find((c) => c.weak);
+    const strongHit = near.find((c) => !c.weak);
+    // One title that is both a weak test and a strong one (same title in two files, no file in the results): say nothing.
+    if (weakHit && strongHit) return o;
+    const hit = weakHit?.f;
     if (!hit) {
       // The runner did not say how many assertions ran, but lint read the test and found a real one:
       // that is evidence enough not to punish runners (node:test, vitest, jest) that report no counts.
-      if (o.assertions === undefined && matches(asserting, ids, title)) {
+      if (o.assertions === undefined && strongHit) {
         upgraded.push(o.title);
         return { ...o, assertions: 1 };
       }
@@ -749,10 +786,7 @@ export async function lintOutcomes(outcomes: TestOutcome[], options: LintOutcome
   const marked = applied.outcomes.map((o) => {
     const ids = claimedCriteria(o.title);
     const title = norm(o.title);
-    const to = ids.filter((id) => lint.unrelated.some((u) => {
-      const name = norm(u.test);
-      return u.id === id && (name === '' || title.includes(name) || (title !== '' && name.includes(title)));
-    }));
+    const to = ids.filter((id) => lint.unrelated.some((u) => u.id === id && sameFile(u.file, o.file) && matchTestName(u.test, o.title) !== undefined));
     return to.length > 0 ? { ...o, unrelatedTo: to } : o;
   });
   applied.outcomes = marked;

@@ -165,7 +165,7 @@ test('okproof_status shows unproven and names the weak test', async () => {
   const text = r.content[0].text;
   assert.equal(text.split('\n')[0], 'Not done: 1 of 2 criteria proven.');
   assert.match(text, /UNPROVEN {2}7\.1/);
-  assert.match(text, /- 7\.1 \(unproven\).*add a real assertion to first works \[okproof:7\.1\]/);
+  assert.match(text, /- 7\.1 \(unproven\).*add a real assertion to "first works \[okproof:7\.1\]"/);
   assert.match(text, /MET {2}7\.2/);
   await rm(cwd, { recursive: true, force: true });
 });

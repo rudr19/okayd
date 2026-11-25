@@ -64,6 +64,6 @@ export function parseCTRF(input: string | object): TestOutcome[] {
     const status = statusOf(t);
     const n = t.extra?.assertions;
     const assertions = typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : undefined;
-    return { title: t.name ?? '', status, evidence: evidenceOf(t, status), ...(assertions !== undefined ? { assertions } : {}) };
+    return { title: t.name ?? '', ...(typeof t.filePath === 'string' && t.filePath !== '' ? { file: t.filePath } : {}), status, evidence: evidenceOf(t, status), ...(assertions !== undefined ? { assertions } : {}) };
   });
 }

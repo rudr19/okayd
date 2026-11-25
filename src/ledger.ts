@@ -20,6 +20,8 @@ export interface TestOutcome {
   assertions?: number;
   /** Set by lint: criterion ids this test claims but shares no key word with. Such a test cannot lift those criteria to E2. */
   unrelatedTo?: string[];
+  /** Source file of the test when the runner says (JUnit file=, CTRF filePath, Playwright location). Lint uses it to tell same-named tests apart. */
+  file?: string;
 }
 
 export interface LedgerEntry {
