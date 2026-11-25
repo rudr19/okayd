@@ -29,6 +29,8 @@ export interface FinalizeOptions {
   minLevel?: EvidenceLevel;
   /** The .okproof/ folder is identical to the base branch (the Action sets it); with a results file this allows E4. */
   proofMatchesBase?: boolean;
+  /** Issues the pull request links; each needs a proof file or the comment says "not proven" (same verdict as okproof gate). */
+  requireIssues?: string[];
 }
 
 export interface FinalizeResult {
@@ -67,7 +69,7 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
     lines.push(`okproof #${ledger.issue}: ${met}/${ledger.entries.length} criteria met${weakNote}${levelNote}, ${ledger.proven ? 'proven' : 'not proven'}`);
   }
   if (options.github !== false && ledgers.length > 0) {
-    const published = await publishToGitHub(ledgers, undefined, undefined, await evaluateGate(dir, { issue: options.issue, ledgers, minLevel: options.minLevel }));
+    const published = await publishToGitHub(ledgers, undefined, undefined, await evaluateGate(dir, { issue: options.issue, ledgers, minLevel: options.minLevel, checkNames: true, requireIssues: options.requireIssues }));
     if (published.comment !== 'skipped') lines.push(`okproof: pull request comment ${published.comment}`);
     else if (published.reason !== 'not running in GitHub Actions') lines.push(`okproof: no PR comment (${published.reason})`);
   }

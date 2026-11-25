@@ -6,7 +6,7 @@ import { appendFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { evaluateGate } from '../dist/src/gate.js';
+import { evaluateGate, parseIssueList } from '../dist/src/gate.js';
 import { parseLevel } from '../dist/src/evidence.js';
 
 const dir = process.env.DIR || '.okproof';
@@ -22,7 +22,7 @@ try {
       try { ledgers.push(JSON.parse(await readFile(join(dir, n), 'utf8'))); } catch { /* evaluateGate reports the missing ledger */ }
     }
   }
-  const result = await evaluateGate(dir, { minLevel, allowEmpty: process.env.OKPROOF_ALLOW_EMPTY === '1', ...(ledgers ? { ledgers } : {}) });
+  const result = await evaluateGate(dir, { minLevel, allowEmpty: process.env.OKPROOF_ALLOW_EMPTY === '1', checkNames: true, requireIssues: parseIssueList(process.env.REQUIRED || ''), ...(ledgers ? { ledgers } : {}) });
   proven = result.ok;
   lines.push(...result.notes.map((n) => `okproof ${n}`), ...result.problems.map((p) => `okproof not proven: ${p}`));
   if (lines.length === 0) lines.push(proven ? 'okproof: proven' : 'okproof: not proven');

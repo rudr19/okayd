@@ -220,6 +220,7 @@ runs:
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        OKPROOF_REQUIRE_ISSUES: ${{ steps.issues.outputs.required }}
         OKPROOF_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
       run: |
         level=(--min-level "${MIN_LEVEL:-E2}")
@@ -237,6 +238,7 @@ runs:
         DIR: ${{ inputs.dir }}
         RESULTS: ${{ inputs.results }}
         MIN_LEVEL: ${{ inputs.min-level }}
+        REQUIRED: ${{ steps.issues.outputs.required }}
       run: node "$GITHUB_ACTION_PATH/scripts/action-outputs.mjs"
 
     - name: Check that changed proof files are linked

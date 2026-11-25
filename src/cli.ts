@@ -27,6 +27,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseProof, compareToIssueBody } from './proof.js';
 import { fetchIssue, syncProofFile, describeSync } from './sync.js';
+import { parseIssueList } from './gate.js';
 import { parseResults, runGate, sha256Hex, type LintRequest } from './trust.js';
 import { finalize } from './finalize.js';
 import { readResultsFile } from './results-file.js';
@@ -57,8 +58,12 @@ let lintFlag: string | true | undefined;
 let minLevelFlag: string | undefined = process.env.OKPROOF_MIN_LEVEL || undefined;
 let proofMatchesBase = process.env.OKPROOF_PROOF_MATCHES_BASE === '1';
 const args: string[] = [];
+let requireIssuesFlag: string | undefined = process.env.OKPROOF_REQUIRE_ISSUES || undefined;
 for (let i = 0; i < argv.length; i++) {
-  if (argv[i] === '--strict-assertions') strictAssertions = true;
+  // For ingest only: gate parses its own --require-issues.
+  if (argv[0] === 'ingest' && argv[i] === '--require-issues') requireIssuesFlag = argv[++i];
+  else if (argv[0] === 'ingest' && argv[i].startsWith('--require-issues=')) requireIssuesFlag = argv[i].slice('--require-issues='.length);
+  else if (argv[i] === '--strict-assertions') strictAssertions = true;
   else if (argv[i] === '--strict-relevance') strictRelevance = true;
   else if (argv[i] === '--max-claims' || argv[i].startsWith('--max-claims=')) {
     const raw = argv[i] === '--max-claims' ? argv[++i] : argv[i].slice('--max-claims='.length);
@@ -336,6 +341,11 @@ function minLevel(): EvidenceLevel {
   return minLevelFlag === undefined ? DEFAULT_MIN_LEVEL : parseLevel(minLevelFlag);
 }
 
+/** Issues the pull request links (ingest --require-issues, or OKPROOF_REQUIRE_ISSUES from the Action). */
+function requireIssues(): string[] {
+  return requireIssuesFlag === undefined ? [] : parseIssueList(requireIssuesFlag);
+}
+
 async function main(): Promise<number> {
   if (cmd === 'check') {
     const f = flags(args.slice(1));
@@ -400,6 +410,7 @@ async function main(): Promise<number> {
       resultsSha256: sha256Hex(text),
       minLevel: minLevel(),
       proofMatchesBase,
+      requireIssues: requireIssues(),
     });
     for (const line of lines) console.log(line);
     return lintFailed ? 1 : 0;

@@ -24,6 +24,19 @@ export interface GateOptions {
   allowUncovered?: boolean;
   /** Evidence level required of a criterion whose proof line names none. Default E2. */
   minLevel?: EvidenceLevel;
+  /** Issues the pull request links: each needs its own proof file, or the gate fails. */
+  requireIssues?: string[];
+  /** Fail when a proof file is not named for the issue its heading names (the CLI gate, the PR comment and MCP status all set it). */
+  checkNames?: boolean;
+  /** Results of `verify --replay-only` run in this job: every repro file needs a passing one (see replayProblems). */
+  replays?: ReplayResults;
+}
+
+/** What `okproof verify --replay-only --json` writes: one entry per repro file replayed. */
+export interface ReplayResults {
+  /** ISO time the replays ran. */
+  at?: string;
+  results: { file: string; criterionId: string; reproduced: boolean; aborted?: boolean }[];
 }
 
 export interface GateResult {
@@ -89,7 +102,61 @@ export function staleness(proof: ProofFile, ledger: Ledger): string | undefined 
   return `#${proof.issue} STALE: the proof file changed after the ledger was written (${parts.join('; ') || 'duplicate criteria'}). ${RERUN}`;
 }
 
+/** One verdict everywhere: the proof-file checks that need more than one file, run for every caller that passes the options. */
 export async function evaluateGate(dir: string, options: GateOptions = {}): Promise<GateResult> {
+  const core = await evaluateGateCore(dir, options);
+  const extra: string[] = [];
+  if (options.checkNames) extra.push(...(await proofNameProblems(dir)));
+  if (options.requireIssues && options.requireIssues.length > 0) extra.push(...(await requiredIssueProblems(dir, options.requireIssues)));
+  if (extra.length === 0) return core;
+  return { ok: false, problems: [...core.problems, ...extra], notes: core.notes };
+}
+
+async function proofNames(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir)).filter((n) => n.endsWith('.md') && !n.startsWith('ledger-')).sort();
+  } catch {
+    return [];
+  }
+}
+
+/** A proof file must be named for the issue its heading names, or it can stand in for another issue. */
+export async function proofNameProblems(dir: string): Promise<string[]> {
+  const problems: string[] = [];
+  for (const name of await proofNames(dir)) {
+    let issue: string;
+    try {
+      issue = parseProof(await readFile(join(dir, name), 'utf8')).issue;
+    } catch {
+      continue;
+    }
+    const stem = name.slice(0, -'.md'.length);
+    if (stem !== issue) problems.push(`${name}: heading says #${issue} but the file is named for #${stem}. Rename the file or fix the heading.`);
+  }
+  return problems;
+}
+
+/** Parses "142,143" (or "#142, #143") into issue numbers as strings. Throws on anything else. */
+export function parseIssueList(list: string): string[] {
+  const out: string[] = [];
+  for (const part of list.split(',')) {
+    const p = part.trim().replace(/^#/, '');
+    if (p === '') continue;
+    if (!/^[1-9]\d{0,8}$/.test(p)) throw new Error(`--require-issues takes issue numbers like 142,143, got "${part.trim()}".`);
+    if (!out.includes(p)) out.push(p);
+  }
+  return out;
+}
+
+/** One problem for each required issue that has no proof file named for it. */
+export async function requiredIssueProblems(dir: string, issues: string[]): Promise<string[]> {
+  const have = new Set((await proofNames(dir)).map((n) => n.slice(0, -'.md'.length)));
+  return issues
+    .filter((n) => !have.has(n))
+    .map((n) => `#${n} is linked by the pull request but there is no proof file ${join(dir, `${n}.md`).replace(/\\/g, '/')}. Add one (okproof sync --issue ${n}, or sync: write in the Action); renaming another issue's proof file does not count.`);
+}
+
+async function evaluateGateCore(dir: string, options: GateOptions = {}): Promise<GateResult> {
   const problems: string[] = [];
   const notes: string[] = [];
   let names: string[];

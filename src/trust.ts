@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseCTRF } from './ctrf.js';
-import { evaluateGate } from './gate.js';
+import { evaluateGate, parseIssueList, proofNameProblems, requiredIssueProblems } from './gate.js';
 import { buildLedger, type Ledger, type TestOutcome } from './ledger.js';
 import { parseJUnit } from './junit.js';
 import { readResultsFile } from './results-file.js';
@@ -89,41 +89,7 @@ export async function ledgersFromResults(
   return ledgers;
 }
 
-/** A proof file must be named for the issue its heading names, or it can stand in for another issue. */
-export async function proofNameProblems(dir: string): Promise<string[]> {
-  const problems: string[] = [];
-  for (const name of await proofNames(dir)) {
-    let issue: string;
-    try {
-      issue = parseProof(await readFile(join(dir, name), 'utf8')).issue;
-    } catch {
-      continue;
-    }
-    const stem = name.slice(0, -'.md'.length);
-    if (stem !== issue) problems.push(`${name}: heading says #${issue} but the file is named for #${stem}. Rename the file or fix the heading.`);
-  }
-  return problems;
-}
-
-/** Parses "142,143" (or "#142, #143") into issue numbers as strings. Throws on anything else. */
-export function parseIssueList(list: string): string[] {
-  const out: string[] = [];
-  for (const part of list.split(',')) {
-    const p = part.trim().replace(/^#/, '');
-    if (p === '') continue;
-    if (!/^[1-9]\d{0,8}$/.test(p)) throw new Error(`--require-issues takes issue numbers like 142,143, got "${part.trim()}".`);
-    if (!out.includes(p)) out.push(p);
-  }
-  return out;
-}
-
-/** One problem for each required issue that has no proof file named for it. */
-export async function requiredIssueProblems(dir: string, issues: string[]): Promise<string[]> {
-  const have = new Set((await proofNames(dir)).map((n) => n.slice(0, -'.md'.length)));
-  return issues
-    .filter((n) => !have.has(n))
-    .map((n) => `#${n} is linked by the pull request but there is no proof file ${join(dir, `${n}.md`).replace(/\\/g, '/')}. Add one (okproof sync --issue ${n}, or sync: write in the Action); renaming another issue's proof file does not count.`);
-}
+export { proofNameProblems, parseIssueList, requiredIssueProblems };
 
 /** Why the committed ledgers cannot be trusted as evidence of a test run in this job. */
 export async function unboundLedgerWarnings(dir: string): Promise<string[]> {
@@ -210,10 +176,9 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
       return 2;
     }
   }
-  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, requireVerify: a.requireVerify, ledgers, allowPreexisting: a.allowPreexisting, allowUncovered: a.allowUncovered, minLevel: opts.minLevel });
-  const extra = [...(await proofNameProblems(a.dir)), ...(await requiredIssueProblems(a.dir, a.requireIssues))];
+  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, requireVerify: a.requireVerify, ledgers, allowPreexisting: a.allowPreexisting, allowUncovered: a.allowUncovered, minLevel: opts.minLevel, checkNames: true, requireIssues: a.requireIssues });
   for (const n of result.notes) console.log(n);
   if (a.results === undefined) for (const w of await unboundLedgerWarnings(a.dir)) console.error(w);
-  for (const p of [...result.problems, ...extra]) console.error(p);
-  return result.ok && extra.length === 0 ? 0 : 1;
+  for (const p of result.problems) console.error(p);
+  return result.ok ? 0 : 1;
 }
