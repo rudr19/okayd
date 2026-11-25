@@ -345,14 +345,11 @@ export function repoFromRemote(url: string): string | undefined {
   let s = url.trim();
   const scp = /^[\w.-]+@[\w.-]+:([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(s);
   if (scp) return scp[1];
-  const at = s.indexOf('://');
-  if (at !== -1) {
-    s = s.slice(at + 3);
-    const slash = s.indexOf('/');
-    if (slash === -1) return undefined;
-    const host = s.slice(0, slash);
-    if (!host.endsWith('github.com')) return undefined;
-    const path = s.slice(slash + 1).replace(/\.git$/, '').replace(/\/+$/, '');
+  if (s.includes('://')) {
+    let u: URL;
+    try { u = new URL(s); } catch { return undefined; }
+    if (u.hostname.toLowerCase() !== 'github.com' && u.hostname.toLowerCase() !== 'www.github.com') return undefined;
+    const path = u.pathname.replace(/^\/+/, '').replace(/\.git$/, '').replace(/\/+$/, '');
     return /^[\w.-]+\/[\w.-]+$/.test(path) ? path : undefined;
   }
   return undefined;

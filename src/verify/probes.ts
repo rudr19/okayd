@@ -8,7 +8,7 @@ import { Browser, type Page, type WaitUntil } from '../driver/index.js';
 import { execute, isAssertion, normalizeUrl, parseSnapshotRefs, type Action, type RefEntry } from './actions.js';
 import type { Violation } from './agent.js';
 import { attributeFinding } from './attribution.js';
-import type { PreparedAuth } from './auth.js';
+import { jsLiteral, type PreparedAuth } from './auth.js';
 import { XSS_PAYLOAD } from './checks.js';
 import { Detectors, findingKey, REFUTE_SEVERITY, type Finding } from './detectors.js';
 import { INSPECT_SCRIPT, type InspectResult } from './probe-dom.js';
@@ -149,7 +149,7 @@ const persistence: Probe = {
     if (!(await fillForm(s, boxes, marker)) || !(await s.step({ type: 'click', ...target(submit) }))) return;
     const after = (await s.page.evaluate<string>('document.body ? document.body.innerText : ""')).toLowerCase();
     const listed = await s.page.evaluate<boolean>(
-      `Array.prototype.some.call(document.querySelectorAll('li,tr,[role=listitem],[role=row]'),function(e){return (e.innerText||'').indexOf(${JSON.stringify(marker)})>=0})`,
+      `Array.prototype.some.call(document.querySelectorAll('li,tr,[role=listitem],[role=row]'),function(e){return (e.innerText||'').indexOf(${jsLiteral(marker)})>=0})`,
     );
     const accepted = listed || SUCCESS_WORDS.some((w) => after.includes(w) && !before.includes(w));
     if (!accepted) { s.note = 'the app gave no sign it accepted the input, so there is nothing to expect after a reload'; return; }

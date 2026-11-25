@@ -432,7 +432,7 @@ test('sync keeps a criterion\'s required level and {pre} when it rewrites the pr
 });
 
 test('MCP okproof_status shows each level and the next step to raise it', async () => {
-  const root = await project(LEDGER_PROOF.replace('## #7 Pay', '## #7 Pay'), JUNIT);
+  const root = await project(LEDGER_PROOF, JUNIT);
   await writeFile(join(root, '.okproof', '7.md'), LEDGER_PROOF);
   const proof = parseProof(LEDGER_PROOF);
   await writeFile(join(root, '.okproof', 'ledger-7.json'), JSON.stringify(buildLedger(proof, [PASS('7.1'), PASS('7.once'), PASS('7.low')])));

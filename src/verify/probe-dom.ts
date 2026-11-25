@@ -1,6 +1,7 @@
 // Scripts that run inside the page for probes and checks. They are plain strings
 // evaluated through the driver; nothing here is built from page or user input except
-// through JSON.stringify, and none of it uses a RegExp built from input.
+// through jsLiteral, and none of it uses a RegExp built from input.
+import { jsLiteral } from './auth.js';
 
 /** Helpers shared by every script: a control's accessible-ish name, and whether it is actually shown. */
 export const DOM_HELPERS = String.raw`
@@ -36,7 +37,7 @@ const DESTRUCTIVE = ['delete', 'remove', 'cancel', 'logout', 'log out', 'sign ou
 const SUBMITISH = ['save', 'submit', 'add', 'create', 'send', 'post', 'order', 'buy', 'place', 'register', 'sign up', 'subscribe', 'update', 'apply', 'book', 'pay', 'checkout', 'continue'];
 
 export const INSPECT_SCRIPT = `(function(){${DOM_HELPERS}
-var DESTRUCTIVE=${JSON.stringify(DESTRUCTIVE)}, SUBMITISH=${JSON.stringify(SUBMITISH)};
+var DESTRUCTIVE=${jsLiteral(DESTRUCTIVE)}, SUBMITISH=${jsLiteral(SUBMITISH)};
 function has(list,n){n=n.toLowerCase();return list.some(function(k){return n.indexOf(k)>=0})}
 var submits=[], seen={};
 Array.prototype.forEach.call(document.querySelectorAll('button,input[type=submit],input[type=button],[role=button]'),function(b){

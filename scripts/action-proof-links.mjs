@@ -43,6 +43,12 @@ export function unlinkedProofFiles(files, dir, linked) {
 
 /** Every changed file of a pull request (paginated). `fetchImpl` is injectable for tests. */
 export async function listPullFiles({ repo, number, token, apiUrl = 'https://api.github.com', fetchImpl = fetch }) {
+  // Only validated values reach the request URL: owner/name and the PR number are matched
+  // strictly (same shape as src/github.ts), and the API base must be https. The token is only
+  // sent to that base. Nothing read from the proof files is placed in the URL.
+  if (!/^[\w.-]+\/[\w.-]+$/.test(String(repo))) throw new Error('Invalid repository name');
+  if (!Number.isInteger(number) || number < 1) throw new Error('Invalid pull request number');
+  if (new URL(apiUrl).protocol !== 'https:') throw new Error('GitHub API URL must use https');
   const files = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
     const res = await fetchImpl(`${apiUrl}/repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`, {

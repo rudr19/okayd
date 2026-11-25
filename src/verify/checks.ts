@@ -5,6 +5,7 @@
 
 import type { Page } from '../driver/index.js';
 import { DOM_HELPERS } from './probe-dom.js';
+import { jsLiteral } from './auth.js';
 
 export type CheckSpec =
   | { kind: 'fitsViewport'; names: string[] }
@@ -65,7 +66,7 @@ names.forEach(function(n){
   if(!usable&&bad) problems.push('"'+n+'" '+bad);
 });
 return problems;
-})(${JSON.stringify(names)})`);
+})(${jsLiteral(names)})`);
   return problems.length === 0 ? ok : fail(clip(problems.slice(0, 5).join('; ')));
 }
 
@@ -103,7 +104,7 @@ async function singleSubmit(page: Page, marker: string): Promise<CheckResult> {
   const rows = await page.evaluate<number>(`(function(m){
 var items=Array.prototype.filter.call(document.querySelectorAll('li,tr,[role=listitem],[role=row],article'),function(e){return (e.innerText||'').indexOf(m)>=0});
 return items.filter(function(e){return !items.some(function(o){return o!==e&&e.contains(o)})}).length;
-})(${JSON.stringify(marker)})`);
+})(${jsLiteral(marker)})`);
   return rows >= 2 ? fail(`a double click created ${rows} list items for the same submission`) : ok;
 }
 
