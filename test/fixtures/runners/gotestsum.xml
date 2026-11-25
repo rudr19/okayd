@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="4" failures="1" errors="0" time="0.044">
+	<testsuite tests="4" failures="1" time="0.044" name="example.com/app/auth" timestamp="2026-11-20T10:00:00Z">
+		<properties>
+			<property name="go.version" value="go1.23.2 linux/amd64"></property>
+		</properties>
+		<testcase classname="example.com/app/auth" name="TestLogin" time="0.010"></testcase>
+		<testcase classname="example.com/app/auth" name="TestLogin/sign_in_[okproof:2.1]" time="0.000"></testcase>
+		<testcase classname="example.com/app/auth" name="TestLogin/sign_out_[okproof:2.2]" time="0.000">
+			<failure message="Failed">=== RUN   TestLogin/sign_out_[okproof:2.2]
+    auth_test.go:42: got status 403, want 200
+--- FAIL: TestLogin/sign_out_[okproof:2.2] (0.00s)
+</failure>
+		</testcase>
+		<testcase classname="example.com/app/auth" name="TestReset_[okproof:2.3]" time="0.000">
+			<skipped message="=== RUN   TestReset_[okproof:2.3]&#xA;    auth_test.go:55: needs smtp&#xA;--- SKIP: TestReset_[okproof:2.3] (0.00s)"></skipped>
+		</testcase>
+	</testsuite>
+</testsuites>

@@ -28,6 +28,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: node dist/src/cli.js check
+      # Informational: Node's built-in coverage report, printed to the log. No threshold, so it can never block a merge.
+      - name: Coverage report (informational)
+        if: matrix.node == 22 && matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        run: node scripts/test.mjs --coverage
       - name: Pack smoke test
         if: matrix.node == 22 && matrix.os == 'ubuntu-latest'
         run: npm run smoke

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.acme.AuthTest" time="0.512" tests="4" errors="0" skipped="1" failures="0">
+  <properties>
+    <property name="java.version" value="21.0.5"/>
+    <property name="surefire.real.class.path" value="/work/target/surefire/surefirebooter.jar"/>
+  </properties>
+  <testcase name="signInWorks [okproof:4.1]" classname="com.acme.AuthTest" time="0.101"/>
+  <testcase name="signOutWorks [okproof:4.2]" classname="com.acme.AuthTest" time="0.230">
+    <flakyFailure message="expected: &lt;200&gt; but was: &lt;503&gt;" type="org.opentest4j.AssertionFailedError">
+      <stackTrace><![CDATA[org.opentest4j.AssertionFailedError: expected: <200> but was: <503>
+	at com.acme.AuthTest.signOutWorks(AuthTest.java:41)
+]]></stackTrace>
+      <system-out><![CDATA[retrying <testcase name="decoy [okproof:4.9]"/>]]></system-out>
+    </flakyFailure>
+  </testcase>
+  <testcase name="resetAfterRerun [okproof:4.3]" classname="com.acme.AuthTest" time="0.150">
+    <rerunFailure message="timeout" type="java.util.concurrent.TimeoutException">
+      <stackTrace><![CDATA[java.util.concurrent.TimeoutException]]></stackTrace>
+    </rerunFailure>
+  </testcase>
+  <testcase name="neverRuns [okproof:4.4]" classname="com.acme.AuthTest" time="0">
+    <skipped message="disabled on CI"/>
+  </testcase>
+</testsuite>

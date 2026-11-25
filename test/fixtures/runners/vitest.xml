@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="4" failures="1" errors="0" time="0.532">
+    <testsuite name="test/auth.test.ts" timestamp="2026-11-20T10:00:00.000Z" hostname="ci-host" tests="4" failures="1" errors="0" skipped="1" time="0.012">
+        <testcase classname="test/auth.test.ts" name="auth &gt; signs in [okproof:5.1]" time="0.003">
+        </testcase>
+        <testcase classname="test/auth.test.ts" name="auth &gt; signs out [okproof:5.2]" time="0.004">
+            <failure message="expected 403 to be 200 // Object.is equality" type="AssertionError">
+AssertionError: expected 403 to be 200 // Object.is equality
+ ❯ test/auth.test.ts:17:30
+            </failure>
+        </testcase>
+        <testcase classname="test/auth.test.ts" name="auth &gt; resets [okproof:5.3]" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="test/auth.test.ts" name="auth &gt; no tag" time="0.001">
+        </testcase>
+    </testsuite>
+</testsuites>

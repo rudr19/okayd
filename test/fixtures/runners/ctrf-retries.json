@@ -1,0 +1,20 @@
+{
+  "reportFormat": "CTRF",
+  "specVersion": "0.0.0",
+  "reportId": "00000000-0000-4000-8000-000000000000",
+  "timestamp": "2026-11-20T10:00:00.000Z",
+  "generatedBy": "example-ctrf-reporter",
+  "results": {
+    "tool": { "name": "playwright", "version": "1.49.0" },
+    "summary": { "tests": 6, "passed": 3, "failed": 1, "skipped": 1, "pending": 0, "other": 1, "start": 1763632800000, "stop": 1763632806000 },
+    "tests": [
+      { "name": "member signs in [okproof:11.1]", "status": "passed", "duration": 1800, "filePath": "tests/auth.spec.ts", "retries": 0, "flaky": false, "extra": { "assertions": 2 } },
+      { "name": "member signs out [okproof:11.2]", "status": "passed", "duration": 2400, "filePath": "tests/auth.spec.ts", "retries": 2, "flaky": true,
+        "attachments": [ { "name": "trace", "contentType": "application/zip", "path": "test-results/signs-out/trace.zip" } ] },
+      { "name": "member resets [okproof:11.3]", "status": "failed", "duration": 900, "filePath": "tests/auth.spec.ts", "retries": 2, "flaky": false, "message": "Timeout 5000ms exceeded" },
+      { "name": "member exports [okproof:11.4]", "status": "skipped", "duration": 0, "filePath": "tests/export.spec.ts" },
+      { "name": "member imports [okproof:11.5]", "status": "other", "duration": 0, "filePath": "tests/import.spec.ts" },
+      { "name": "retried clean [okproof:11.6]", "status": "passed", "duration": 700, "retries": 1 }
+    ]
+  }
+}

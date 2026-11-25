@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="1" tests="5" time="0.231" timestamp="2026-11-20T10:00:00.000000" hostname="ci-host"><properties><property name="build" value="1234"/></properties><testcase classname="tests.test_auth" name="test_sign_in[[okproof:1.1]]" time="0.012"><system-out>--- Captured stdout call ---
+fake line: &lt;testcase name="not real [okproof:1.9]"/&gt;
+</system-out></testcase><testcase classname="tests.test_auth" name="test_sign_out[[okproof:1.2]-admin]" time="0.008"/><testcase classname="tests.test_auth" name="test_sign_out[[okproof:1.2]-viewer]" time="0.009"><failure message="assert 403 == 200">def test_sign_out(claim, role):
+&gt;       assert client.post("/logout").status_code == 200
+E       assert 403 == 200
+
+tests/test_auth.py:21: AssertionError</failure></testcase><testcase classname="tests.test_auth" name="test_reset[[okproof:1.3]]" time="0.000"><skipped type="pytest.skip" message="needs smtp">/repo/tests/test_auth.py:30: needs smtp</skipped></testcase><testcase classname="tests.test_misc" name="test_untagged" time="0.001"/></testsuite></testsuites>

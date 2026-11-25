@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="3" failures="1" errors="0" time="1.234">
+  <testsuite name="auth" errors="0" failures="1" skipped="0" timestamp="2026-11-20T10:00:00" time="0.812" tests="3">
+    <testcase classname="auth sign in works [okproof:3.1]" name="auth sign in works [okproof:3.1]" time="0.004">
+    </testcase>
+    <testcase classname="auth totals use &lt;b&gt; &amp; markup [okproof:3.2]" name="auth totals use &lt;b&gt; &amp; markup [okproof:3.2]" time="0.021">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 3
+Received: 2
+    at Object.&lt;anonymous&gt; (src/auth.test.ts:12:23)</failure>
+    </testcase>
+    <testcase classname="auth plain untagged" name="auth plain untagged" time="0.001">
+    </testcase>
+  </testsuite>
+</testsuites>

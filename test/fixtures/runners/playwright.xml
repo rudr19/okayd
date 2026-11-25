@@ -1,0 +1,29 @@
+<testsuites id="" name="" tests="4" failures="1" skipped="1" errors="0" time="6.412">
+<testsuite name="auth.spec.ts" timestamp="2026-11-20T10:00:00.000Z" hostname="chromium" tests="4" failures="1" skipped="1" time="5.801" errors="0">
+<testcase name="auth › member signs in [okproof:6.1]" classname="auth.spec.ts" time="1.912">
+</testcase>
+<testcase name="auth › member signs out [okproof:6.2]" classname="auth.spec.ts" time="2.040">
+<failure message="auth.spec.ts:21:5 member signs out [okproof:6.2]" type="FAILURE">
+<![CDATA[  [chromium] › auth.spec.ts:21:5 › auth › member signs out [okproof:6.2] ───────
+
+    Error: expect(locator).toBeVisible()
+
+    Locator: getByText('Signed out')
+    Expected: visible
+    Received: <element(s) not found>
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|test-results/auth-member-signs-out/trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="auth › reset is skipped [okproof:6.3]" classname="auth.spec.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="auth › retried then passed [okproof:6.4]" classname="auth.spec.ts" time="1.012">
+</testcase>
+</testsuite>
+</testsuites>

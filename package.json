@@ -29,6 +29,7 @@
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p .",
     "test": "npm run build && node scripts/test.mjs",
+    "test:coverage": "npm run build && node scripts/test.mjs --coverage",
     "check": "node dist/src/cli.js check",
     "demo": "npm run build && node examples/demo/run-demo.mjs",
     "smoke": "node scripts/pack-smoke.mjs",
