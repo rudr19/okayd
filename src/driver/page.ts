@@ -7,6 +7,25 @@ export interface Problems {
   network: string[];
 }
 
+/** What goto/reload wait for. 'load' is the default. */
+export type WaitUntil = 'load' | 'domcontentloaded' | 'networkidle';
+
+export const WAIT_UNTIL_VALUES: readonly WaitUntil[] = ['load', 'domcontentloaded', 'networkidle'];
+
+/** A request the page made, as the driver saw it. */
+export interface RequestRecord {
+  method: string;
+  url: string;
+  postData?: string;
+}
+
+const IDLE_MS = 500;
+const EVENT_NAME: Record<WaitUntil, string> = {
+  load: 'the load event',
+  domcontentloaded: 'DOMContentLoaded',
+  networkidle: 'network idle (no requests for 500 ms)',
+};
+
 const KEYS: Record<string, { key: string; code: string; vk: number; text?: string }> = {
   Enter: { key: 'Enter', code: 'Enter', vk: 13, text: '\r' },
   Tab: { key: 'Tab', code: 'Tab', vk: 9 },
@@ -21,13 +40,13 @@ const KEYS: Record<string, { key: string; code: string; vk: number; text?: strin
 export class Browser {
   private readonly pages = new Set<Page>();
 
-  private constructor(readonly cdp: Cdp, private readonly chrome: LaunchedChrome) {}
+  private constructor(readonly cdp: Cdp, private readonly chrome: LaunchedChrome, private readonly waitUntil: WaitUntil) {}
 
-  static async launch(opts: LaunchOptions = {}): Promise<Browser> {
+  static async launch(opts: LaunchOptions & { waitUntil?: WaitUntil } = {}): Promise<Browser> {
     const chrome = await launchChrome(opts);
     try {
       const cdp = await Cdp.connect(chrome.wsEndpoint, opts.timeoutMs ?? 15000);
-      return new Browser(cdp, chrome);
+      return new Browser(cdp, chrome, opts.waitUntil ?? 'load');
     } catch (e) {
       await chrome.kill();
       throw e;
@@ -42,6 +61,7 @@ export class Browser {
     const { targetId } = await this.cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await this.cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
     const page = new Page(this.cdp, targetId, sessionId);
+    page.waitUntil = this.waitUntil;
     await page.init();
     this.pages.add(page);
     return page;
@@ -57,6 +77,11 @@ export class Page {
   private refs = new Map<string, number>();
   private readonly problemLog: Problems = { console: [], network: [] };
   private readonly requestUrls = new Map<string, string>();
+  private readonly inflight = new Set<string>();
+  private lastNetworkAt = Date.now();
+  private readonly requestLog: RequestRecord[] = [];
+  /** What goto and reload wait for when the call does not say. */
+  waitUntil: WaitUntil = 'load';
 
   constructor(private readonly cdp: Cdp, readonly targetId: string, readonly sessionId: string) {}
 
@@ -78,8 +103,21 @@ export class Page {
       this.problemLog.console.push(`log error: ${p.entry.text}${p.entry.url ? ` (${p.entry.url})` : ''}`);
     });
     this.cdp.on('Network.requestWillBeSent', (p, sid) => {
-      if (sid === s) this.requestUrls.set(p.requestId, p.request?.url);
+      if (sid !== s) return;
+      this.requestUrls.set(p.requestId, p.request?.url);
+      this.inflight.add(p.requestId);
+      this.lastNetworkAt = Date.now();
+      if (this.requestLog.length < 2000) {
+        this.requestLog.push({ method: String(p.request?.method ?? 'GET'), url: String(p.request?.url ?? ''), postData: typeof p.request?.postData === 'string' ? p.request.postData : undefined });
+      }
     });
+    const settled = (p: any, sid?: string): void => {
+      if (sid !== s) return;
+      this.inflight.delete(p.requestId);
+      this.lastNetworkAt = Date.now();
+    };
+    this.cdp.on('Network.loadingFinished', settled);
+    this.cdp.on('Network.loadingFailed', settled);
     this.cdp.on('Network.loadingFailed', (p, sid) => {
       if (sid !== s || p.canceled) return;
       this.problemLog.network.push(`${this.requestUrls.get(p.requestId) ?? p.requestId} ${p.errorText}`);
@@ -105,23 +143,52 @@ export class Page {
     return this.send<T>(method, params);
   }
 
-  async goto(url: string, opts: { timeoutMs?: number } = {}): Promise<void> {
+  /**
+   * Starts a navigation and waits for the chosen event. A timeout throws an error that says what
+   * was being waited for and what to try instead.
+   */
+  private async navigateAndWait(
+    begin: () => Promise<{ errorText?: string } | void>,
+    what: string,
+    opts: { timeoutMs?: number; waitUntil?: WaitUntil },
+  ): Promise<void> {
     const timeoutMs = opts.timeoutMs ?? 30000;
-    await this.send('Page.enable');
-    const loaded = this.cdp.waitFor('Page.loadEventFired', this.sessionId, timeoutMs);
-    loaded.catch(() => { /* handled below */ });
-    const res = await this.send<{ errorText?: string }>('Page.navigate', { url });
-    if (res.errorText) throw new Error(`Navigation to ${url} failed: ${res.errorText}`);
-    await loaded;
+    const waitUntil = opts.waitUntil ?? this.waitUntil;
+    const event = waitUntil === 'domcontentloaded' ? 'Page.domContentEventFired' : 'Page.loadEventFired';
+    const deadline = Date.now() + timeoutMs;
+    const slow = (): Error => new Error(
+      `Page did not finish loading within ${timeoutMs / 1000}s (waited for ${EVENT_NAME[waitUntil]}). The server or a resource is slow; try waitUntil: 'domcontentloaded' or a larger timeoutMs.`,
+    );
+    // The listener inside waitFor has its own timer; ours is the one that produces the message.
+    const fired = this.cdp.waitFor(event, this.sessionId, timeoutMs + 1000);
+    fired.catch(() => { /* handled below */ });
+    let timer: NodeJS.Timeout | undefined;
+    const timedOut = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(slow()), timeoutMs); });
+    timedOut.catch(() => { /* raced below */ });
+    try {
+      const res = await Promise.race([begin(), timedOut]);
+      if (res && res.errorText) throw new Error(`${what} failed: ${res.errorText}`);
+      await Promise.race([fired, timedOut]);
+      if (waitUntil === 'networkidle') {
+        for (;;) {
+          if (this.inflight.size === 0 && Date.now() - this.lastNetworkAt >= IDLE_MS) break;
+          if (Date.now() >= deadline) throw slow();
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+    } finally {
+      clearTimeout(timer);
+    }
     this.refs = new Map();
   }
 
-  async reload(opts: { timeoutMs?: number } = {}): Promise<void> {
-    const loaded = this.cdp.waitFor('Page.loadEventFired', this.sessionId, opts.timeoutMs ?? 30000);
-    loaded.catch(() => { /* handled below */ });
-    await this.send('Page.reload');
-    await loaded;
-    this.refs = new Map();
+  async goto(url: string, opts: { timeoutMs?: number; waitUntil?: WaitUntil } = {}): Promise<void> {
+    await this.send('Page.enable');
+    await this.navigateAndWait(() => this.send<{ errorText?: string }>('Page.navigate', { url }), `Navigation to ${url}`, opts);
+  }
+
+  async reload(opts: { timeoutMs?: number; waitUntil?: WaitUntil } = {}): Promise<void> {
+    await this.navigateAndWait(() => this.send('Page.reload'), 'Reload', opts);
   }
 
   /** Goes back one history entry. Returns false when there is nothing to go back to. */
@@ -161,6 +228,20 @@ export class Page {
   }
 
   async click(ref: string): Promise<void> {
+    await this.clickTimes(ref, 1);
+  }
+
+  /** Two clicks in the same tick, as a fast double click (no waiting between them). */
+  async doubleClick(ref: string): Promise<void> {
+    await this.clickTimes(ref, 2);
+  }
+
+  /** Requests the page has made so far (method, url, post body when small). */
+  requests(): RequestRecord[] {
+    return this.requestLog.map((r) => ({ ...r }));
+  }
+
+  private async clickTimes(ref: string, times: 1 | 2): Promise<void> {
     const backendNodeId = this.backendId(ref);
     await this.send('DOM.scrollIntoViewIfNeeded', { backendNodeId }).catch(() => { /* may fail for already visible */ });
     let x: number, y: number;
@@ -173,10 +254,12 @@ export class Page {
     } catch {
       throw new Error(`Cannot click ${ref}: element has no visible box`);
     }
-    const base = { x, y, button: 'left', clickCount: 1 };
     await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    await this.send('Input.dispatchMouseEvent', { ...base, type: 'mousePressed' });
-    await this.send('Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' });
+    for (let n = 1; n <= times; n++) {
+      const base = { x, y, button: 'left', clickCount: n };
+      await this.send('Input.dispatchMouseEvent', { ...base, type: 'mousePressed' });
+      await this.send('Input.dispatchMouseEvent', { ...base, type: 'mouseReleased' });
+    }
   }
 
   async type(ref: string, text: string): Promise<void> {
