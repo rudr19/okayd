@@ -6,6 +6,13 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `okproof diff --base <ref> --test <command> --results <file>`: differential proof. Runs the PR's tests on the merge base and on HEAD in temporary git worktrees (zero tokens, no model). A criterion is `proven-by-change`, `not-differential` (passes on both: not met, unless `{pre}` or `--allow-preexisting`), `regressed` or `failing`. Writes `.okproof/diff-<issue>.json`; the gate and ledger honour it.
+- `okproof revert-check`: reverts each changed source file in a worktree and records which criteria's tests notice; a criterion whose tests stay green is `uncovered` (not met, unless `--allow-uncovered`). Writes `.okproof/revert-<issue>.json`.
+- Action inputs `differential` (`off`/`on`) and `test-command`. Needs `fetch-depth: 0`.
+- `okproof gate --allow-preexisting --allow-uncovered`.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

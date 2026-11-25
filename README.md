@@ -303,6 +303,95 @@ Known limits, so you can weigh a hit:
 
 Treat it as a prompt to open the test, not a verdict.
 
+## Differential proof (zero tokens)
+
+A test that passes before the change and after it proves nothing about the
+change. It would have been green with or without the work. okproof can check
+this without a model, just by running your tests twice:
+
+```sh
+okproof diff --base origin/main --test "npm test" --results junit.xml
+```
+
+`okproof diff` finds the merge base of `--base` (default `origin/main`) and
+HEAD, and creates a temporary git worktree at each. Into both it copies the
+current `.okproof/` folder and the test files that differ from the base, so the
+tests are the PR's tests and the code is the base's code. It then runs your
+`--test` command in each (through the shell, with `OKPROOF_SIDE=base` or
+`OKPROOF_SIDE=head` in the environment), reads `--results` (JUnit XML, or CTRF
+with `--format ctrf`) from each, and compares them per criterion:
+
+| Status | Meaning |
+| --- | --- |
+| `proven-by-change` | its tagged tests fail or do not exist on the base, and pass on HEAD |
+| `not-differential` | they pass on both: the test does not depend on this change |
+| `regressed` | they pass on the base and fail on HEAD |
+| `failing` | they fail on both |
+
+The result is written to `.okproof/diff-<issue>.json`, with the base and head
+commits and a hash of the criteria. `okproof ingest` and `okproof gate` read it:
+a `not-differential` criterion is **not met** and `regressed` fails the gate. A
+criterion that was already true before the PR is fine; say so on its line with a
+`{pre}` marker (after a `{#id}`, if it has one):
+
+```markdown
+- [ ] {pre} Existing users can still sign in
+```
+
+or pass `--allow-preexisting` to `okproof diff` (or `okproof gate`) to accept all
+of them. `--timeout <seconds>` limits each side (default 600).
+
+Your working tree, index, branches and git config are never touched, and the
+worktrees are removed even when the test command fails or times out. The
+repository's `node_modules` is linked into each worktree, so install
+dependencies first. Only committed code at HEAD is tested.
+
+In the GitHub Action, set `differential: on` and `test-command` (and check out
+with `fetch-depth: 0`, so the base branch and merge base exist):
+
+```yaml
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: rudr19/okproof@v0
+        with:
+          results: junit.xml
+          differential: 'on'
+          test-command: npx vitest run --reporter=junit --outputFile=junit.xml
+```
+
+The command is passed to the shell through an environment variable, never
+spliced into the workflow script.
+
+## Revert check
+
+`okproof diff` asks whether the tests *fail without the change*. The revert
+check asks the reverse: do they *notice the change being undone*?
+
+```sh
+okproof revert-check --base origin/main --test "npm test" --results junit.xml
+```
+
+It lists the source files changed between the merge base and HEAD (tests,
+`.okproof/`, docs, lockfiles and images are left out). In a temporary worktree at
+HEAD it reverts each one to its base version, re-runs the tests, and records
+which criteria flip from pass to fail. Then it reverts all of them at once, to
+catch a criterion that depends on two files together. A criterion whose tests
+stay green no matter what is reverted is `uncovered`: its tests do not exercise
+the change. Each covered criterion lists the files that cover it.
+
+`--max-runs <n>` (default 20) caps the per-file runs; with more files, they are
+grouped by directory. `--issue <n>` limits it to one proof file. The result is
+`.okproof/revert-<issue>.json`. The gate treats `uncovered` as not met, unless
+you pass `--allow-uncovered` to `okproof revert-check` or `okproof gate`.
+
+Limitations: both checks only see what your tests report. If reverting a file
+(or running on the base) breaks the whole test run, every criterion counts as
+failing there, which can look like coverage; the run log says when a run wrote no
+results. They need a deterministic test suite, a checkout with history
+(`fetch-depth: 0`), and a test command that works in a fresh checkout apart from
+`node_modules`. Only the root `node_modules` is linked.
+
 ## Keep criteria in sync with the issue
 
 The GitHub issue is the source of truth. Instead of copying its checkboxes by hand:
@@ -357,7 +446,7 @@ jobs:
 Inputs: `results` (JUnit XML path, optional), `dir` (default `.okproof`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
 `issue` (issue number to sync from; default: detected from the PR body),
-`sync` (`check` default, `write` or `off`), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+`sync` (`check` default, `write` or `off`), `differential` (`off` default, or `on`, with `test-command`; see Differential proof), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as

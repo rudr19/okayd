@@ -16,6 +16,10 @@
 // okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
 // okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]
 //                                 scaffold .okproof/, and optionally CI and agent files; never overwrites
+// okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir]
+//                                 differential proof: run the tests on the base and on HEAD; a test that passes on both proves nothing
+// okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir]
+//                                 revert each changed source file and see which criteria's tests notice
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -29,8 +33,9 @@ import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
+import { runDiffCommand, runRevertCommand } from './techcli.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir] | okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance });
 let format: string | undefined;
@@ -328,6 +333,8 @@ async function main(): Promise<number> {
     for (const line of result.lines) console.log(line);
     return result.ok ? 0 : 1;
   }
+  if (cmd === 'diff') return runDiffCommand(args.slice(1), format);
+  if (cmd === 'revert-check') return runRevertCommand(args.slice(1), format);
   if (cmd === 'mcp') {
     await startMcpServer(process.stdin, process.stdout);
     return 0;
