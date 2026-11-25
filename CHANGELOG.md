@@ -6,6 +6,8 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
 ### Added
 
 - `okproof diff --base <ref> --test <command> --results <file>`: differential proof. Runs the PR's tests on the merge base and on HEAD in temporary git worktrees (zero tokens, no model). A criterion is `proven-by-change`, `not-differential` (passes on both: not met, unless the criterion carries the `pre` token, or `--allow-preexisting`), `regressed` or `failing`. Writes `.okproof/diff-<issue>.json`; the gate and ledger honour it.

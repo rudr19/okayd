@@ -1,6 +1,6 @@
 {
   "name": "okproof",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Prove agent-written pull requests against their acceptance criteria. Works with Playwright Test or any runner that writes JUnit XML.",
   "license": "Apache-2.0",
   "author": "Rudra Kumar Pandey",
