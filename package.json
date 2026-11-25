@@ -35,9 +35,9 @@
     "prepublishOnly": "npm test"
   },
   "devDependencies": {
-    "@types/node": "22.10.2",
-    "fast-check": "3.23.2",
-    "typescript": "5.6.3"
+    "@types/node": "26.6.6",
+    "fast-check": "4.10.3",
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=20"
