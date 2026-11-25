@@ -8,7 +8,8 @@ import { open, readdir } from 'node:fs/promises';
 import { join, resolve, relative, sep } from 'node:path';
 import { claimedCriteria, parseProof } from './proof.js';
 import type { TestOutcome } from './ledger.js';
-import { bodyWords, criterionKeywords, missingKeywords, removeTrivial, stripTags, topWords } from './relevance.js';
+import { bodyWords, criterionKeywords, missingKeywords, stripTags, topWords } from './relevance.js';
+import { judge, type WeakDetail } from './weak-signals.js';
 
 export interface LintOptions {
   /** Project root: where test files are searched and where ".okproof" lives. Default ".". */
@@ -19,7 +20,12 @@ export interface LintOptions {
   proofDir?: string;
   /** Make "possibly unrelated" findings fail the run (result.ok false). Default false: advisory. */
   strictRelevance?: boolean;
+  /** A test claiming more criteria than this is flagged (an error with strictRelevance). Default 3. */
+  maxClaims?: number;
 }
+
+/** Default for LintOptions.maxClaims. */
+export const DEFAULT_MAX_CLAIMS = 3;
 
 export interface LintFinding {
   file: string;
@@ -29,6 +35,8 @@ export interface LintFinding {
   title: string;
   /** Why a test is weak: no assertion at all, or only trivial ones such as expect(true).toBe(true). */
   reason?: 'none' | 'trivial';
+  /** For a trivial test, the specific kind (dead code, swallowed failure, constant comparison ...). */
+  detail?: WeakDetail;
   /** The test's own title without its tags (the function name for Python). Used to match a runner's outcome. */
   name?: string;
 }
@@ -44,8 +52,20 @@ export interface RelevanceFinding {
   missing: string[];
 }
 
+export interface OverclaimFinding {
+  file: string;
+  line: number;
+  ids: string[];
+  test: string;
+  max: number;
+}
+
 export interface LintResult {
   weak: LintFinding[];
+  /** Tagged tests in which lint found at least one real, non-trivial assertion. */
+  asserting: LintFinding[];
+  /** Tests claiming more criteria than maxClaims. Advisory unless strictRelevance. */
+  overclaims: OverclaimFinding[];
   /** Tagged tests whose body shares no key word with the criterion they claim. Advisory unless strictRelevance. */
   unrelated: RelevanceFinding[];
   /** Tags naming a criterion that no proof file lists. One finding per tag. */
@@ -73,11 +93,6 @@ const MAX_PY_BLOCK_LINES = 2000;
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git']);
 const SOURCE_EXT = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'py', 'go']);
 const TEST_NAME = /(?:\.(?:test|spec|e2e)\.[a-z]{2,3}|(?:^|\/)test_[^/]*\.py|_test\.(?:py|go))$/;
-
-// Anything that counts as an assertion. Applied to code with strings and
-// comments blanked out. No nested quantifiers: linear on any input.
-const ASSERTION =
-  /\bexpect\s*[.(]|\bassert|\.should\b|\bshould\s*\(|\bt\.(?:Error|Fatal)|\brequire\.|\.not\.to|\.to(?:Be|Equal|Have|Match|Throw|Contain|StrictEqual)|\bpytest\.raises/;
 
 // ---------------------------------------------------------------------------
 // Scanners
@@ -266,6 +281,7 @@ interface FoundTest {
   ids: string[];
   weak: boolean;
   trivial: boolean;
+  detail?: WeakDetail;
   /** The test's title or function name, without the tag. */
   name: string;
   /** Words (and stems) of the body, for the relevance check. */
@@ -337,7 +353,7 @@ export function analyzeSource(src: string, python: boolean): FileFindings {
         line,
         title: lineText(src, idx),
         ids: [id],
-        ...judge(code),
+        ...judge(code, true),
         name: pyName(pyLines[defIdx]!),
         words: bodyWords(code, lits.filter((l) => !l.includes('[okproof:'))),
       };
@@ -368,14 +384,6 @@ export function analyzeSource(src: string, python: boolean): FileFindings {
     out.tests.push(lastTest);
   }
   return out;
-}
-
-/** Weak when nothing asserts, or when every assertion is trivial (expect(true).toBe(true)). */
-function judge(code: string): { weak: boolean; trivial: boolean } {
-  if (!ASSERTION.test(code)) return { weak: true, trivial: false };
-  const rest = removeTrivial(code);
-  if (rest !== code && !ASSERTION.test(rest)) return { weak: true, trivial: true };
-  return { weak: false, trivial: false };
 }
 
 function pyName(defLine: string): string {
@@ -587,6 +595,9 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
   const textOf = new Map<string, string>();
   for (const c of criteria ?? []) if (!textOf.has(c.id)) textOf.set(c.id, c.text);
   const weak: LintFinding[] = [];
+  const asserting: LintFinding[] = [];
+  const overclaims: OverclaimFinding[] = [];
+  const maxClaims = options.maxClaims ?? DEFAULT_MAX_CLAIMS;
   const unrelated: RelevanceFinding[] = [];
   const dangling: LintFinding[] = [];
   const seenIds = new Set<string>();
@@ -607,7 +618,9 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
     scanned++;
     const found = analyzeSource(src, f.endsWith('.py'));
     for (const t of found.tests) {
-      if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title, reason: t.trivial ? 'trivial' : 'none', name: t.name });
+      if (t.weak) weak.push({ file: rel, line: t.line, ids: t.ids, title: t.title, reason: t.trivial ? 'trivial' : 'none', name: t.name, ...(t.detail ? { detail: t.detail } : {}) });
+      else asserting.push({ file: rel, line: t.line, ids: t.ids, title: t.title, name: t.name });
+      if (t.ids.length > maxClaims) overclaims.push({ file: rel, line: t.line, ids: t.ids, test: t.name, max: maxClaims });
       // A test with no assertions is already reported weak; relevance is about the rest.
       if (t.weak && !t.trivial) continue;
       for (const id of t.ids) {
@@ -637,22 +650,23 @@ export async function lintTests(options: LintOptions = {}): Promise<LintResult> 
 
   const lines: string[] = [];
   for (const w of weak) {
-    const why = w.reason === 'trivial' ? 'only trivial assertions (such as expect(true).toBe(true)) in test body' : 'no assertion in test body';
+    const why = w.reason === 'trivial' ? (w.detail ? `no assertion that can fail (${w.detail})` : 'only trivial assertions (such as expect(true).toBe(true)) in test body') : 'no assertion in test body';
     lines.push(`WEAK      ${w.file}:${w.line}  [okproof:${w.ids.join(', ')}] ${why}: ${w.title}`);
   }
   for (const u of unrelated) {
     const text = u.criterion.length > 100 ? `${u.criterion.slice(0, 97)}...` : u.criterion;
     lines.push(`UNRELATED ${u.file}:${u.line}  possibly unrelated: test '${u.test}' claims ${u.id} ('${text}') but never mentions ${u.missing.join(', ')}`);
   }
+  for (const o of overclaims) lines.push(`OVERCLAIM ${o.file}:${o.line}  test '${o.test}' claims ${o.ids.length} criteria (${o.ids.join(', ')}); more than ${o.max} in one test is rarely real coverage. Split it, or raise --max-claims`);
   for (const d of dangling) lines.push(`DANGLING  ${d.file}:${d.line}  [okproof:${d.ids[0]}] no such criterion in any proof file`);
   for (const u of untested) lines.push(`UNTESTED  ${u.id}  ${u.text}: no tagged test`);
   for (const n of notes) lines.push(`note: ${n}`);
   const strictRelevance = options.strictRelevance === true;
-  const ok = weak.length === 0 && dangling.length === 0 && (!strictRelevance || unrelated.length === 0);
+  const ok = weak.length === 0 && dangling.length === 0 && (!strictRelevance || (unrelated.length === 0 && overclaims.length === 0));
   lines.push(
-    `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${unrelated.length} possibly unrelated${strictRelevance ? '' : ' (advisory)'}, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
+    `okproof lint: ${scanned} test file${scanned === 1 ? '' : 's'} scanned, ${weak.length} weak, ${unrelated.length} possibly unrelated${strictRelevance ? '' : ' (advisory)'}, ${overclaims.length} over-claiming${strictRelevance ? '' : ' (advisory)'}, ${dangling.length} dangling tag${dangling.length === 1 ? '' : 's'}, ${untested.length} untested criteri${untested.length === 1 ? 'on' : 'a'}`,
   );
-  return { weak, unrelated, dangling, untested, filesScanned: scanned, notes, lines, ok };
+  return { weak, asserting, overclaims, unrelated, dangling, untested, filesScanned: scanned, notes, lines, ok };
 }
 
 // ---------------------------------------------------------------------------
@@ -669,23 +683,38 @@ const norm = (s: string): string => stripTags(s).toLowerCase();
  * a count above zero stands, except for a test lint calls trivial. Returns new
  * outcomes; the input is not changed.
  */
-export function applyLintToOutcomes(outcomes: TestOutcome[], weak: LintFinding[]): { outcomes: TestOutcome[]; marked: string[] } {
+export function applyLintToOutcomes(
+  outcomes: TestOutcome[],
+  weak: LintFinding[],
+  asserting: LintFinding[] = [],
+): { outcomes: TestOutcome[]; marked: string[]; upgraded: string[] } {
   const marked: string[] = [];
-  const result = outcomes.map((o) => {
-    const ids = claimedCriteria(o.title);
-    if (ids.length === 0) return o;
-    const title = norm(o.title);
-    const hit = weak.find((f) => {
+  const upgraded: string[] = [];
+  const matches = (list: LintFinding[], ids: string[], title: string): LintFinding | undefined =>
+    list.find((f) => {
       if (!f.ids.some((id) => ids.includes(id))) return false;
       const name = f.name === undefined ? '' : norm(f.name);
       return name === '' || title.includes(name) || (title !== '' && name.includes(title));
     });
-    if (!hit) return o;
+  const result = outcomes.map((o) => {
+    const ids = claimedCriteria(o.title);
+    if (ids.length === 0) return o;
+    const title = norm(o.title);
+    const hit = matches(weak, ids, title);
+    if (!hit) {
+      // The runner did not say how many assertions ran, but lint read the test and found a real one:
+      // that is evidence enough not to punish runners (node:test, vitest, jest) that report no counts.
+      if (o.assertions === undefined && matches(asserting, ids, title)) {
+        upgraded.push(o.title);
+        return { ...o, assertions: 1 };
+      }
+      return o;
+    }
     if (o.assertions !== undefined && !(hit.reason === 'trivial' && o.assertions > 0)) return o;
     marked.push(o.title);
     return { ...o, assertions: 0 };
   });
-  return { outcomes: result, marked };
+  return { outcomes: result, marked, upgraded };
 }
 
 export interface LintOutcomesOptions {
@@ -696,12 +725,15 @@ export interface LintOutcomesOptions {
   /** Folder holding proof files. */
   proofDir?: string;
   strictRelevance?: boolean;
+  maxClaims?: number;
 }
 
 export interface LintOutcomesResult {
   outcomes: TestOutcome[];
   /** Titles of outcomes marked weak by lint. */
   marked: string[];
+  /** Titles whose unknown assertion count lint replaced with a positive one (it found a real assertion). */
+  upgraded: string[];
   lint: LintResult;
   /** Human lines: one per marked test, plus advisory relevance warnings. */
   lines: string[];
@@ -711,11 +743,13 @@ export interface LintOutcomesResult {
 
 /** Run lint and apply its weak findings to `outcomes`. Relevance stays advisory unless strictRelevance. */
 export async function lintOutcomes(outcomes: TestOutcome[], options: LintOutcomesOptions = {}): Promise<LintOutcomesResult> {
-  const lint = await lintTests({ dir: options.dir, tests: options.tests, proofDir: options.proofDir, strictRelevance: options.strictRelevance });
-  const applied = applyLintToOutcomes(outcomes, lint.weak);
+  const lint = await lintTests({ dir: options.dir, tests: options.tests, proofDir: options.proofDir, strictRelevance: options.strictRelevance, maxClaims: options.maxClaims });
+  const applied = applyLintToOutcomes(outcomes, lint.weak, lint.asserting);
   const lines: string[] = [];
   for (const m of applied.marked) lines.push(`okproof lint: marked weak (no real assertion): ${m}`);
+  for (const m of applied.upgraded) lines.push(`okproof lint: real assertion found (runner reported no count): ${m}`);
+  for (const o of lint.overclaims) lines.push(`okproof lint: over-claiming: test '${o.test}' claims ${o.ids.length} criteria (${o.ids.join(', ')}), more than ${o.max}`);
   for (const u of lint.unrelated) lines.push(`okproof lint: possibly unrelated: test '${u.test}' claims ${u.id} but never mentions ${u.missing.join(', ')}`);
-  const ok = options.strictRelevance !== true || lint.unrelated.length === 0;
-  return { outcomes: applied.outcomes, marked: applied.marked, lint, lines, ok };
+  const ok = options.strictRelevance !== true || (lint.unrelated.length === 0 && lint.overclaims.length === 0);
+  return { outcomes: applied.outcomes, marked: applied.marked, upgraded: applied.upgraded, lint, lines, ok };
 }

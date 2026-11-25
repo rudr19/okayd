@@ -24,6 +24,8 @@ export interface LintRequest {
   /** Path or glob limiting the scan. Absent: every test file under the working directory. */
   tests?: string;
   strictRelevance?: boolean;
+  /** Flag a test claiming more criteria than this. Default 3. */
+  maxClaims?: number;
 }
 
 export const sha256Hex = (text: string): string => createHash('sha256').update(text).digest('hex');
@@ -55,10 +57,10 @@ export async function ledgersFromResults(
   const text = await readResultsFile(resultsFile);
   let outcomes = parseResults(text, resultsFile, opts.format);
   if (opts.lint) {
-    const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance });
+    const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance, maxClaims: opts.lint.maxClaims });
     outcomes = l.outcomes;
     for (const line of l.lines) opts.report?.(line);
-    if (!l.ok) throw new Error('okproof lint: a tagged test is possibly unrelated to its criterion (--strict-relevance).');
+    if (!l.ok) throw new Error('okproof lint: a tagged test is possibly unrelated to its criterion, or claims too many criteria (--strict-relevance).');
   }
   const results_sha256 = sha256Hex(text);
   const ledgers: Ledger[] = [];

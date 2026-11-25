@@ -13,7 +13,7 @@
 //                                 exit 1 unless every proof file has a fresh, fully met ledger;
 //                                 with --results, ledgers are rebuilt in memory from the test results
 //                                 and committed ledgers are ignored
-// okproof lint   [--tests <path>] [--strict-relevance] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion
+// okproof lint   [--tests <path>] [--strict-relevance] [--max-claims N] [dir]  flag tagged tests that assert nothing or only trivially (exit 1); warn on tests unrelated to their criterion or claiming more than N criteria (default 3)
 // okproof init [--issue N --title T] [--runner r] [--agents] [--workflow] [--yes]
 //                                 scaffold .okproof/, and optionally CI and agent files; never overwrites
 // okproof mcp                       serve okproof to coding agents over MCP (stdio)
@@ -31,19 +31,28 @@ import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [--max-claims N] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
-const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance });
+const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance, ...(maxClaims !== undefined ? { maxClaims } : {}) });
 let format: string | undefined;
 let tests: string | undefined;
 let strictAssertions = process.env.OKPROOF_STRICT_ASSERTIONS === '1';
 let strictRelevance = false;
+let maxClaims: number | undefined;
 /** --lint [path]: true for bare --lint, a string for --lint=<path> or --lint <path>. */
 let lintFlag: string | true | undefined;
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--strict-assertions') strictAssertions = true;
   else if (argv[i] === '--strict-relevance') strictRelevance = true;
+  else if (argv[i] === '--max-claims' || argv[i].startsWith('--max-claims=')) {
+    const raw = argv[i] === '--max-claims' ? argv[++i] : argv[i].slice('--max-claims='.length);
+    if (raw === undefined || !/^[1-9]\d{0,5}$/.test(raw)) {
+      console.error(`--max-claims needs a positive whole number. ${USAGE}`);
+      process.exit(2);
+    }
+    maxClaims = Number(raw);
+  }
   else if (argv[i] === '--lint') {
     // A following word that is not a flag is the test path or glob. Put the proof folder before --lint, or write --lint=<path>.
     const nxt = argv[i + 1];
@@ -306,7 +315,7 @@ async function main(): Promise<number> {
     let lintFailed = false;
     if (lintReq) {
       const dir = args[2] ?? '.okproof';
-      const l = await lintOutcomes(outcomes, { dir: '.', tests: lintReq.tests, proofDir: dir, strictRelevance: lintReq.strictRelevance });
+      const l = await lintOutcomes(outcomes, { dir: '.', tests: lintReq.tests, proofDir: dir, strictRelevance: lintReq.strictRelevance, maxClaims: lintReq.maxClaims });
       outcomes = l.outcomes;
       for (const line of l.lines) console.log(line);
       lintFailed = !l.ok;
@@ -325,7 +334,7 @@ async function main(): Promise<number> {
     return runGate(args.slice(1), { format, strictAssertions, lint: lintRequest() });
   }
   if (cmd === 'lint') {
-    const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance });
+    const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance, maxClaims });
     for (const line of result.lines) console.log(line);
     return result.ok ? 0 : 1;
   }
