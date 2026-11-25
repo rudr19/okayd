@@ -11,7 +11,7 @@ const ledger = buildLedger(parseProof('## #7 Login\n- [ ] Signs in\n- [ ] Shows 
 
 interface Call { url: string; method: string; body?: string }
 
-function fakeFetch(existing: Array<{ id: number; body: string }>, calls: Call[]): typeof fetch {
+function fakeFetch(existing: Array<{ id: number; body: string; user?: { login: string } }>, calls: Call[]): typeof fetch {
   return (async (url: string, init?: RequestInit) => {
     calls.push({ url, method: init?.method ?? 'GET', body: init?.body as string | undefined });
     const json = init?.method ? {} : existing;
@@ -60,7 +60,7 @@ test('updates its own comment on a rerun', async () => {
   const r = await publishToGitHub(
     [ledger],
     { GITHUB_ACTIONS: 'true', GITHUB_TOKEN: 't', GITHUB_REPOSITORY: 'a/b', GITHUB_REF: 'refs/pull/5/merge' },
-    fakeFetch([{ id: 1, body: 'someone else' }, { id: 99, body: `${COMMENT_MARKER}\nold` }], calls),
+    fakeFetch([{ id: 1, body: 'someone else' }, { id: 99, body: `${COMMENT_MARKER}\nold`, user: { login: 'github-actions[bot]' } }], calls),
   );
   assert.equal(r.comment, 'updated');
   assert.equal(calls.find((c) => c.method === 'PATCH')?.url, 'https://api.github.com/repos/a/b/issues/comments/99');

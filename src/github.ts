@@ -16,6 +16,8 @@ export interface GitHubEnv {
   GITHUB_API_URL?: string;
   GITHUB_TOKEN?: string;
   GH_TOKEN?: string;
+  /** Login that authors okproof's comment when GET /user is not allowed for the token (an app token). Default github-actions[bot]. */
+  OKPROOF_COMMENT_AUTHOR?: string;
 }
 
 export interface PublishResult {
@@ -81,6 +83,23 @@ export function apiBase(raw: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Who the token posts as. A personal token answers GET /user. The workflow's GITHUB_TOKEN (and app tokens)
+ * cannot, and comments made with it are authored by github-actions[bot].
+ */
+async function ownLogin(base: string, headers: Record<string, string>, env: GitHubEnv, fetchImpl: typeof fetch): Promise<string> {
+  try {
+    const res = await fetchImpl(`${base}/user`, { headers });
+    if (res.ok) {
+      const body = (await res.json()) as { login?: unknown };
+      if (typeof body?.login === 'string' && body.login !== '') return body.login;
+    }
+  } catch {
+    /* fall through to the default */
+  }
+  return env.OKPROOF_COMMENT_AUTHOR || 'github-actions[bot]';
+}
+
 /** Up to this many pages of 100 comments are searched for our marker. */
 const MAX_PAGES = 10;
 
@@ -117,6 +136,7 @@ export async function publishToGitHub(
   const api = apiBase(env.GITHUB_API_URL);
   if (!api) return { summary, comment: 'skipped', reason: 'GITHUB_API_URL must be an https URL' };
   const base = `${api}/repos/${repo}/issues`;
+  const apiRoot = api;
   const headers = {
     authorization: `Bearer ${token}`,
     accept: 'application/vnd.github+json',
@@ -126,12 +146,15 @@ export async function publishToGitHub(
 
   // A network failure must not fail the run: the ledger is already written.
   try {
+    // Only a marked comment written by this token's own identity is ours. Anyone can post the marker text,
+    // and a PATCH on someone else's comment fails, which would silence okproof for the whole pull request.
+    const me = (await ownLogin(apiRoot, headers, env, fetchImpl)).toLowerCase();
     let mine: { id: number } | undefined;
     for (let page = 1; page <= MAX_PAGES && !mine; page++) {
       const list = await fetchImpl(`${base}/${pr}/comments?per_page=100&page=${page}`, { headers });
       if (!list.ok) return { summary, comment: 'skipped', reason: `listing comments failed (${list.status})` };
-      const comments = (await list.json()) as Array<{ id: number; body?: string }>;
-      mine = comments.find((c) => Number.isSafeInteger(c.id) && c.id > 0 && c.body?.startsWith(COMMENT_MARKER));
+      const comments = (await list.json()) as Array<{ id: number; body?: string; user?: { login?: string } | null }>;
+      mine = comments.find((c) => Number.isSafeInteger(c.id) && c.id > 0 && c.body?.startsWith(COMMENT_MARKER) && c.user?.login?.toLowerCase() === me);
       if (comments.length < 100) break;
     }
 
