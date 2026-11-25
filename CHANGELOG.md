@@ -6,6 +6,25 @@ All notable changes are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `okproof doctor [--repo owner/name] [--dir d] [--check job] [--no-network]`: read-only checks that CODEOWNERS covers `.okproof/`, branch protection or a ruleset requires the okproof check and code-owner review, `.gitignore` ignores ledgers, and the workflow passes `results` (and `fetch-depth` when differential is on). Exit 1 on a failure.
+- Gate: `{verify}` in a proof file heading and `--require-verify` make `verify-<issue>.json` mandatory.
+- Action inputs: `allow-committed-ledgers`, `strict-assertions`, `strict-relevance`, `max-claims`, `allow-empty`, `require-linked-proof`, `require-verify`. The CLI reads the matching `OKPROOF_LINT`, `OKPROOF_STRICT_ASSERTIONS`, `OKPROOF_STRICT_RELEVANCE`, `OKPROOF_MAX_CLAIMS` variables.
+- `okproof lint --max-claims N`: a test claiming more than N criteria (default 3) is reported `OVERCLAIM`; with `--strict-relevance` it fails.
+- `okproof init` prints a copy-paste tag example for the chosen runner.
+- `.gitattributes` (LF everywhere) and a Windows job in CI.
+
+### Changed
+
+- JUnit parsing uses a linear-time XML tokenizer instead of regular expressions: quoted attributes containing `>` or `/`, comments (a `<testcase>` inside a comment no longer counts), CDATA, processing instructions, DOCTYPE, entities, namespaces and nested suites. Results files over 50 MB (JUnit and CTRF) are refused with a clear error.
+- The gate fails (it used to note) when a repro exists for an issue but `verify-<issue>.json` is missing.
+- The proof file written by `okproof init` is marked `{placeholder}` and fails the gate until its example criteria are replaced.
+- The Action fails when no `results` input is given (set `allow-committed-ledgers: true` to keep the old behaviour), treats unknown assertion counts as weak and enables strict relevance by default. When lint finds a real assertion in a test whose runner reported no count, the count becomes positive.
+- Lint treats as weak: constant-only comparisons, `toBeDefined`/`toBeTruthy`/`not.toBeNull` on fixtures (`page`, `browser`, `driver`, ...), `expect.assertions(0)`, assertions in dead code, in functions the test never calls, or in a `try/catch` that swallows the failure.
+- README no longer states "made a real assertion" as fact: it depends on runner counts and heuristic lint. docs/trust.md opens with the trust model (CODEOWNERS and required review are the real control).
+- The Action parses its inputs once (`scripts/action-options.mjs`) instead of in each step.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

@@ -180,3 +180,7 @@ Limitation: positional criteria still renumber when an earlier line is removed
 | A pass after a retry is flaky (Playwright) | `src/playwright.ts:65` | Holds. |
 | "No runtime dependencies" | `package.json` (no `dependencies`; optional peer only) | Holds; peer range now pinned. |
 | Core runs on Node 20, driver and verifier need Node 22 | `package.json` `engines`; `src/driver/cdp.ts:34` | Holds. |
+
+## Later review
+
+A second independent review (2026-11-25) is recorded in [AUDIT.md](AUDIT.md#independent-review-2026-11-25), finding by finding, with the commits that fix each one.

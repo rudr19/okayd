@@ -90,3 +90,52 @@ read-only.
 8. CI pack smoke test; claim the `okproof` npm name and `@okproof` scope; fix the
    Node 20 vs 22 statement; add a job that moves the `v0` tag.
 9. DONE (85495a1): export `evaluateGate` and `compareToIssueBody` from `src/index.ts`.
+
+## Independent review (2026-11-25)
+
+A second, independent review of v0.2.0 (plus badges) produced 17 findings. They
+are fixed on branch `fix/review-round2`. Commits: `92b8949` line endings and
+Windows CI, `4e65e02` JUnit tokenizer and size caps, `43c2e2a` gate bypasses,
+`39ddd50` lint signals, `b912a1f` Action, `3873037` doctor and init. The last
+commit on the branch holds the documentation items.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | H | JUnit regex parser: `>` in attributes, comments, CDATA, quadratic cases | Fixed in `4e65e02`. Linear-time tokenizer (`src/junit.ts`); a `<testcase>` inside a comment no longer counts; 8000 unclosed `<testcase>` parse in well under 200 ms; 50 MB cap. |
+| 2 | H | Deleting `verify-<n>.json` hides a refutation | Fixed in `43c2e2a`. A repro for the issue (`repro/<issue>.*.json`) with no verify file fails the gate; `{verify}` heading flag and `--require-verify` make the file mandatory; `sync` keeps `{verify}`. |
+| 3 | H | Action warns instead of failing without `results`; unknown assertion counts pass | Fixed in `b912a1f` (and `39ddd50` for the lint half). No `results` fails unless `allow-committed-ledgers: true`; `strict-assertions` defaults to true, and a real assertion found by lint upgrades an unknown count (never a reported one). |
+| 4 | H | Weak-assertion detection too easy to evade | Fixed in `39ddd50` (`src/weak-signals.ts`): constant-only comparisons, fixture `toBeDefined`/`toBeTruthy`/`not.toBeNull`, `!!fixture`, `expect.assertions(0)`, dead `if`, code after `return`/`throw`, uncalled local functions, swallowing `try/catch`. Heuristic, biased towards not flagging; see limits below. |
+| 5 | H | One test claiming many criteria | Fixed in `39ddd50`. `--max-claims` (default 3) flags `OVERCLAIM`; fails under `--strict-relevance`, which the Action enables by default. The per-criterion keyword check already required each claimed criterion to share a word with the test. |
+| 6 | M | README overclaims "real assertion" | Fixed in the documentation commit. The sentence now says it depends on runner counts and heuristic lint. Tagline kept. |
+| 7 | M | PRs with no proof file; `paths` filter | Fixed in `b912a1f`. `allow-empty` input wired to `gate --allow-empty`; README and the input description warn against `on.pull_request.paths` on a required check. |
+| 8 | M | Proof file for an unlinked issue | Fixed in `b912a1f`. `scripts/action-proof-links.mjs` lists the PR files (read-only, paginated) and warns, or fails with `require-linked-proof` (defaults to `require-linked`). If the API cannot be read it warns and does not fail. |
+| 9 | M | Windows line endings | Fixed in `92b8949`. `.gitattributes` (`eol=lf`), renormalised, `windows-latest` Node 22 in the CI matrix. Chrome-dependent tests skip when no Chrome is found. |
+| 10 | M | No way to verify the repository settings okproof relies on | Fixed in `3873037`. `okproof doctor` (read-only; GET only; token optional). |
+| 11 | L | Size caps for CTRF results | Fixed in `4e65e02`. One `readResultsFile` helper (stat before read) for `ingest` and `gate --results`; CTRF strings are capped too. |
+| 12 | L | Duplicated lint option parsing in `action.yml` | Fixed in `b912a1f`. `scripts/action-options.mjs` resolves every input once; the CLI reads `OKPROOF_*` variables. |
+| 13 | L | `init` placeholder passes the gate once tests tag it | Fixed in `43c2e2a`. The file is marked `{placeholder}`; the gate says to replace the example criteria. |
+| 14 | L | `init` does not show how to tag a test | Fixed in `3873037`. A per-runner copy-paste example; each example is round-tripped through `claimedCriteria` in tests. |
+| 15 | L | Trust model not stated up front | Fixed in the documentation commit. docs/trust.md opens with: CODEOWNERS plus required review are the real control; okproof cannot enforce them, `doctor` checks them. |
+| 16 | L | Audit record | This section. |
+| 17 | L | Changelog | `CHANGELOG.md`, Unreleased. |
+
+Deferred, with the reason:
+
+- A verifier that runs in CI with a signed binding between the result, the
+  proof file and the commit (evidence level E4) is not done here. It needs the
+  evidence and differential work on `feat/evidence` and `feat/differential`;
+  until then a verifier result is a committed file, protected only by CODEOWNERS
+  and the repro rule above.
+
+Limits of what was fixed:
+
+- Lint is a heuristic with no parser. Dead-code, uncalled-function and swallowed
+  `try/catch` detection are textual and deliberately conservative (a `return`
+  inside `if (x) return;`, a function passed as a callback, or a `catch` that
+  asserts all count as live). `toBeDefined()` and friends are only flagged on a
+  fixed list of fixture names; `!!x` on other variables is not flagged. Python
+  gets the constant-comparison and fixture checks, not the control-flow ones.
+  A test can still be written to fool lint.
+- The linked-proof check fails open when the GitHub API cannot be read.
+- `doctor` cannot read classic branch protection without a token that has admin
+  read; it says so as a warning and does not guess.

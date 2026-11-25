@@ -119,3 +119,15 @@ test('the default init example (no issue) is a placeholder too', async () => {
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('docs state the trust model up front and qualify the real-assertion claim', async () => {
+  const root = new URL('../../', import.meta.url);
+  const trust = await readFile(new URL('docs/trust.md', root), 'utf8');
+  assert.match(trust.slice(0, 900), /CODEOWNERS plus required review/);
+  assert.match(trust.slice(0, 900), /okproof doctor/);
+  const readme = await readFile(new URL('README.md', root), 'utf8');
+  const intro = readme.slice(readme.indexOf('"Proves" is the promise'), readme.indexOf('## Quick start'));
+  assert.match(intro, /as far as okproof can\s+tell/);
+  assert.match(intro, /heuristic/);
+  assert.match(readme, /\*\*Your agent says it's done\. okproof proves it, criterion by criterion\.\*\*/);
+});
