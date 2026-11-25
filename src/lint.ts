@@ -713,6 +713,17 @@ export interface LintOutcomesResult {
 export async function lintOutcomes(outcomes: TestOutcome[], options: LintOutcomesOptions = {}): Promise<LintOutcomesResult> {
   const lint = await lintTests({ dir: options.dir, tests: options.tests, proofDir: options.proofDir, strictRelevance: options.strictRelevance });
   const applied = applyLintToOutcomes(outcomes, lint.weak);
+  // Remember which criteria lint thinks a test is unrelated to: such a test cannot reach evidence level E2 for them.
+  const marked = applied.outcomes.map((o) => {
+    const ids = claimedCriteria(o.title);
+    const title = norm(o.title);
+    const to = ids.filter((id) => lint.unrelated.some((u) => {
+      const name = norm(u.test);
+      return u.id === id && (name === '' || title.includes(name) || (title !== '' && name.includes(title)));
+    }));
+    return to.length > 0 ? { ...o, unrelatedTo: to } : o;
+  });
+  applied.outcomes = marked;
   const lines: string[] = [];
   for (const m of applied.marked) lines.push(`okproof lint: marked weak (no real assertion): ${m}`);
   for (const u of lint.unrelated) lines.push(`okproof lint: possibly unrelated: test '${u.test}' claims ${u.id} but never mentions ${u.missing.join(', ')}`);

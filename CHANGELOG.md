@@ -8,10 +8,16 @@ All notable changes are listed here. The format follows
 
 ### Added
 
-- `okproof diff --base <ref> --test <command> --results <file>`: differential proof. Runs the PR's tests on the merge base and on HEAD in temporary git worktrees (zero tokens, no model). A criterion is `proven-by-change`, `not-differential` (passes on both: not met, unless `{pre}` or `--allow-preexisting`), `regressed` or `failing`. Writes `.okproof/diff-<issue>.json`; the gate and ledger honour it.
+- `okproof diff --base <ref> --test <command> --results <file>`: differential proof. Runs the PR's tests on the merge base and on HEAD in temporary git worktrees (zero tokens, no model). A criterion is `proven-by-change`, `not-differential` (passes on both: not met, unless the criterion carries the `pre` token, or `--allow-preexisting`), `regressed` or `failing`. Writes `.okproof/diff-<issue>.json`; the gate and ledger honour it.
 - `okproof revert-check`: reverts each changed source file in a worktree and records which criteria's tests notice; a criterion whose tests stay green is `uncovered` (not met, unless `--allow-uncovered`). Writes `.okproof/revert-<issue>.json`.
 - Action inputs `differential` (`off`/`on`) and `test-command`. Needs `fetch-depth: 0`.
 - `okproof gate --allow-preexisting --allow-uncovered`.
+- Evidence levels E0 to E4 (README, "Evidence levels"). Ledger entries carry `level`, `required` and `gaps`; a criterion is met only when its level reaches the level it requires. A criterion line can require a level with a `{E3}` token, combinable with `{#id}` and `pre` (`{#pay E3 pre}`); the default is E2, set with `--min-level` or the Action's `min-level` input. The ledger table and PR comment gain a Level column (`E2/E3 ▰▰▱`), gate messages say what evidence is missing, and `okproof_status` shows levels and the next step to raise each. New verdict `insufficient`. E3 reads optional `verify-<n>.json`, `diff-<n>.json` and `revert-<n>.json`; E4 is attested only by `gate --results` with `--proof-matches-base` (the Action passes it when `.okproof/` matches the base branch).
+- Verifier cost: snapshot diffs after the first view (full snapshot at least every fifth view), a per-criterion token budget (`--budget-tokens`, default 20000, 0 for none; an over-budget run is `inconclusive`), tokens per criterion in `verify-<n>.json` and the CLI output.
+
+### Changed
+
+- With `--lint`, a passing test that lint calls "possibly unrelated" now holds its criterion at E1, which fails the default E2 requirement (it was advisory before). Use `{E1}` on a criterion, `--min-level E1`, or fix the test.
 
 ## [0.2.0] - 2026-11-24
 

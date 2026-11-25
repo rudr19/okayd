@@ -1,4 +1,5 @@
-export { parseProof, claimedCriteria, compareToIssueBody, type Criterion, type ProofFile } from './proof.js';
+export { gradeEvidence, readAdversarial, parseLevel, requiredLevel, formatLevel, effectiveLevel, DEFAULT_MIN_LEVEL, LEVEL_TITLES, type EvidenceLevel, type EvidenceGrade, type EvidenceInput, type Adversarial, type CiContext } from './evidence.js';
+export { parseProof, splitCriterionFlags, claimedCriteria, compareToIssueBody, type Criterion, type ProofFile } from './proof.js';
 export { buildLedger, renderLedgerMarkdown, isWeak, verdictLabel, type LedgerOptions, type Ledger, type LedgerEntry, type Verdict, type TestOutcome } from './ledger.js';
 export { finalize, type FinalizeOptions, type FinalizeResult } from './finalize.js';
 export { lintTests, type LintOptions, type LintResult, type LintFinding, type RelevanceFinding } from './lint.js';
@@ -15,5 +16,5 @@ export { tools as mcpTools, runTool, type ToolDefinition, type ToolContext, type
 export { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria, type SyncResult, type SyncOptions, type FetchedIssue } from './sync.js';
 export { runDifferential, classify, type DiffOptions, type DiffResult } from './differential.js';
 export { runRevertCheck, groupFiles, type RevertOptions, type RevertResult } from './revert.js';
-export { techniqueFindings, applyTechniques, PRE_MARKER, type DiffFile, type RevertFile, type DiffStatus, type RevertStatus } from './techniques.js';
+export { techniqueFindings, applyTechniques, isPre, PRE_MARKER, type DiffFile, type RevertFile, type DiffStatus, type RevertStatus } from './techniques.js';
 export { evaluateGate, type GateOptions, type GateResult } from './gate.js';

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Evidence levels (E0-E4, see README): --min-level <E0..E4> sets the level a criterion needs when its proof line names none (default E2);
+// --proof-matches-base (ingest, and gate with --results) says .okproof/ is identical to the base branch, which allows E4.
 // okproof check  [dir] [--issue-body <file> [--issue N]]
 //                                 validate proof files and print each criterion's tag;
 //                                 with --issue-body, fail if the issue's checkboxes differ
@@ -29,13 +31,16 @@ import { parseResults, runGate, sha256Hex, type LintRequest } from './trust.js';
 import { finalize } from './finalize.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
+import { DEFAULT_BUDGET_TOKENS } from './verify/agent.js';
 import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
 import { runDiffCommand, runRevertCommand } from './techcli.js';
+import { DEFAULT_MIN_LEVEL, parseLevel, type EvidenceLevel } from './evidence.js';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir] | okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof diff --base <ref> --test "<command>" --results <file> [--format junit|ctrf] [--timeout s] [--allow-preexisting] [dir] | okproof revert-check --base <ref> --test "<command>" --results <file> [--issue N] [--max-runs n] [--allow-uncovered] [dir] | okproof mcp | okproof verify --url <baseUrl> [--max-steps n] [--budget-tokens n] [--model id] [options]. Any command that builds or checks ledgers also takes --min-level E0..E4 (default E2); ingest and gate --results take --proof-matches-base';
+
 const argv = process.argv.slice(2);
 const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance });
 let format: string | undefined;
@@ -44,6 +49,8 @@ let strictAssertions = process.env.OKPROOF_STRICT_ASSERTIONS === '1';
 let strictRelevance = false;
 /** --lint [path]: true for bare --lint, a string for --lint=<path> or --lint <path>. */
 let lintFlag: string | true | undefined;
+let minLevelFlag: string | undefined = process.env.OKPROOF_MIN_LEVEL || undefined;
+let proofMatchesBase = process.env.OKPROOF_PROOF_MATCHES_BASE === '1';
 const args: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === '--strict-assertions') strictAssertions = true;
@@ -53,6 +60,9 @@ for (let i = 0; i < argv.length; i++) {
     const nxt = argv[i + 1];
     lintFlag = nxt !== undefined && !nxt.startsWith('-') ? argv[++i] : true;
   } else if (argv[i].startsWith('--lint=')) lintFlag = argv[i].slice('--lint='.length) || true;
+  else if (argv[i] === '--min-level') minLevelFlag = argv[++i];
+  else if (argv[i].startsWith('--min-level=')) minLevelFlag = argv[i].slice('--min-level='.length);
+  else if (argv[i] === '--proof-matches-base') proofMatchesBase = true;
   else if (argv[i] === '--tests') tests = argv[++i];
   else if (argv[i].startsWith('--tests=')) tests = argv[i].slice('--tests='.length);
   else if (argv[i] === '--format') format = argv[++i];
@@ -118,6 +128,12 @@ async function runVerify(): Promise<number> {
     console.error(`Name the app to test with --url <baseUrl>. ${USAGE}`);
     return 2;
   }
+  const budgetText = str('budget-tokens');
+  const budgetTokens = budgetText === undefined ? undefined : Number(budgetText);
+  if (budgetTokens !== undefined && !(Number.isInteger(budgetTokens) && budgetTokens >= 0)) {
+    console.error(`--budget-tokens needs a whole number of tokens (0 means no limit), got "${budgetText}". The default is ${DEFAULT_BUDGET_TOKENS}.`);
+    return 2;
+  }
   let model: AnthropicModel;
   try {
     model = new AnthropicModel({ model: str('model'), effort: str('effort') as Effort | undefined });
@@ -126,11 +142,14 @@ async function runVerify(): Promise<number> {
     console.error(message === MISSING_KEY_MESSAGE ? `${message}\nTo re-run saved repro scripts without a model, add --replay-only.` : message);
     return 2;
   }
-  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
+  const runs = await verify({ dir, issue, baseUrl: url, model, maxSteps: Number(str('max-steps') ?? 15), budgetTokens, strictDetectors: f.has('strict-detectors'), ...auth, log: (l) => console.log(l) });
   let refuted = false;
   for (const run of runs) {
     for (const r of run.results) {
       console.log(`${r.criterionId}: ${r.verdict}${r.repro ? ` (repro: ${r.repro})` : ''}`);
+      const used = r.tokens ?? r.usage.input + r.usage.output;
+      console.log(`  tokens: ${used}${r.budgetTokens ? ` of ${r.budgetTokens}` : ''} (input ${r.usage.input}, output ${r.usage.output}), ${r.steps} step${r.steps === 1 ? '' : 's'}`);
+      if (r.outcome === 'budget') console.log('  stopped at the token budget, so the verdict is inconclusive. Raise --budget-tokens, or spend less with --max-steps or a smaller --model.');
       for (const x of r.findings) console.log(`  ${x.confirmed ? 'confirmed' : 'unconfirmed'} [${x.severity}] ${x.title}`);
       refuted ||= r.verdict === 'refuted';
     }
@@ -259,6 +278,11 @@ async function runInitCmd(): Promise<number> {
 }
 const cmd = args[0] ?? 'check';
 
+/** The --min-level flag (or OKPROOF_MIN_LEVEL) as a level; throws a message for a bad value. */
+function minLevel(): EvidenceLevel {
+  return minLevelFlag === undefined ? DEFAULT_MIN_LEVEL : parseLevel(minLevelFlag);
+}
+
 async function main(): Promise<number> {
   if (cmd === 'check') {
     const f = flags(args.slice(1));
@@ -274,7 +298,7 @@ async function main(): Promise<number> {
       const proof = parseProof(await readFile(join(dir, name), 'utf8'));
       proofs.push(proof);
       console.log(`#${proof.issue} ${proof.title}`);
-      for (const c of proof.criteria) console.log(`  [okproof:${c.id}] ${c.text}`);
+      for (const c of proof.criteria) console.log(`  [okproof:${c.id}] ${c.text}${c.level !== undefined ? ` (requires E${c.level})` : ''}`);
     }
     if (bodyFile === undefined) return 0;
     const wanted = value('issue');
@@ -321,12 +345,14 @@ async function main(): Promise<number> {
       github: process.env.OKPROOF_NO_COMMENT !== '1',
       strictAssertions,
       resultsSha256: sha256Hex(text),
+      minLevel: minLevel(),
+      proofMatchesBase,
     });
     for (const line of lines) console.log(line);
     return lintFailed ? 1 : 0;
   }
   if (cmd === 'gate') {
-    return runGate(args.slice(1), { format, strictAssertions, lint: lintRequest() });
+    return runGate(args.slice(1), { format, strictAssertions, lint: lintRequest(), minLevel: minLevel(), proofMatchesBase });
   }
   if (cmd === 'lint') {
     const result = await lintTests({ dir: args[1] ?? '.', tests, strictRelevance });

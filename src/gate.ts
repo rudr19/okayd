@@ -7,6 +7,7 @@ import { parseProof, type ProofFile } from './proof.js';
 import type { Ledger } from './ledger.js';
 import { criteriaHash, readVerifyFile } from './verify/ledger.js';
 import { techniqueFindings } from './techniques.js';
+import { DEFAULT_MIN_LEVEL, effectiveLevel, requiredLevel, shortfall, type EvidenceLevel } from './evidence.js';
 
 export interface GateOptions {
   /** Pass when there is nothing to prove (no folder or no proof files). Default false. */
@@ -19,6 +20,8 @@ export interface GateOptions {
   allowPreexisting?: boolean;
   /** Accept criteria whose tests stay green when the change is reverted (okproof revert-check). */
   allowUncovered?: boolean;
+  /** Evidence level required of a criterion whose proof line names none. Default E2. */
+  minLevel?: EvidenceLevel;
 }
 
 export interface GateResult {
@@ -138,11 +141,22 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     }
     // Verdict from the entries themselves, in the proof file's order.
     const entries = new Map(ledger.entries.map((e) => [e.id, e]));
-    const unmet = proof.criteria.filter((c) => entries.get(c.id)?.verdict !== 'met');
+    // The proof file sets the required level, never the ledger. Only a ledger rebuilt in this job
+    // from its results can be credited with E4.
+    const minLevel = options.minLevel ?? DEFAULT_MIN_LEVEL;
+    const unmet = proof.criteria.filter((c) => {
+      const e = entries.get(c.id);
+      if (e?.verdict === 'met' || e?.verdict === 'insufficient') return effectiveLevel(e, injected !== undefined) < requiredLevel(c, minLevel);
+      return true;
+    });
     if (unmet.length > 0) {
       for (const c of unmet) {
-        const e = entries.get(c.id) as { verdict?: string; weak?: string[] } | undefined;
-        if (e?.verdict === 'unproven') {
+        const e = entries.get(c.id) as { verdict?: string; weak?: string[]; level?: unknown; gaps?: unknown } | undefined;
+        if (e?.verdict === 'met' || e?.verdict === 'insufficient') {
+          const level = effectiveLevel(e, injected !== undefined);
+          const required = requiredLevel(c, minLevel);
+          problems.push(`#${proof.issue} criterion ${c.id} has E${level} evidence but requires E${required}: ${shortfall(c.id, e, level, required)}. ${c.text}`);
+        } else if (e?.verdict === 'unproven') {
           problems.push(`#${proof.issue} criterion ${c.id} is UNPROVEN (no assertions): add a real assertion to ${(e.weak ?? []).join(', ') || 'its tagged tests'}. ${c.text}`);
         } else {
           problems.push(`#${proof.issue} criterion ${c.id} is ${e?.verdict ?? 'untested'}: ${c.text}`);

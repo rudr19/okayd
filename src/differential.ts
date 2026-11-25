@@ -19,7 +19,7 @@ import {
   withWorktree,
   type SideRun,
 } from './worktree.js';
-import { hasPreMarker, type DiffCriterion, type DiffFile, type DiffStatus, type SideRecord } from './techniques.js';
+import { isPre, type DiffCriterion, type DiffFile, type DiffStatus, type SideRecord } from './techniques.js';
 
 export interface DiffOptions {
   /** Test command, run through the shell in each checkout. */
@@ -61,12 +61,12 @@ export function classify(proof: ProofFile, base: TestOutcome[] | undefined, head
     if (h.state === 'missing') status = 'untested';
     else if (h.state === 'pass') status = b.state === 'pass' ? 'not-differential' : 'proven-by-change';
     else status = b.state === 'pass' ? 'regressed' : 'failing';
-    const pre = hasPreMarker(c.text);
+    const pre = isPre(c);
     const allowed = status === 'not-differential' && (pre || allowPreexisting);
     const reason =
       status === 'not-differential'
         ? pre
-          ? 'marked {pre}: already true before this change'
+          ? 'marked pre: already true before this change'
           : allowPreexisting
             ? 'accepted by --allow-preexisting'
             : 'tests pass on the base commit too'

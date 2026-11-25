@@ -5,12 +5,17 @@ import type { Page } from '../driver/index.js';
 import { execute, isAssertion, normalizeUrl, parseSnapshotRefs, type Action } from './actions.js';
 import { Detectors, type Finding } from './detectors.js';
 import type { ModelClient, Msg, ToolCall, ToolDef, ToolResultPart } from './model.js';
+import { diffSnapshots, FULL_EVERY } from './snapshot-diff.js';
+
+/** Input plus output tokens one criterion may use before the run stops as inconclusive. 0 means no limit. */
+export const DEFAULT_BUDGET_TOKENS = 20000;
 
 /** Stable across every call and every criterion, so it caches well. */
 export const SYSTEM_PROMPT = `You are an independent, adversarial QA engineer. You did NOT write this code and you have no stake in it passing. Your job is to try to prove that one acceptance criterion is FALSE in the running web app, using only the tools you are given.
 
 How to work:
 - You see the app only through accessibility snapshots. Interactive elements carry refs like [ref=e3]. Refs are valid only until the next snapshot; always use refs from the latest snapshot.
+- To save tokens, after the first view the page is often shown as changes only: lines marked "+|" were added, "-|" were removed, and every other line is unchanged and keeps its ref. Apply the changes to the previous snapshot in your head, or call the snapshot tool to see the whole page.
 - Do not just walk the happy path. Attack the criterion with realistic abuse: other roles or accounts if the UI shows them, invalid and edge-case input, empty input, very long input, unicode and emoji, double submit, reloading in the middle of a flow, back navigation, keyboard-only use, a 375px wide viewport, and going offline.
 - Check that state really persisted: after an action that claims success, reload and look again.
 - Stay inside the app's own origin. Never invent data you did not enter yourself.
@@ -75,6 +80,8 @@ export interface AgentResult {
   findings: Finding[];
   steps: number;
   usage: { input: number; output: number };
+  /** The token limit this run was held to (0: none). */
+  budgetTokens: number;
 }
 
 export interface VerifyCriterionOptions {
@@ -83,7 +90,7 @@ export interface VerifyCriterionOptions {
   criterion: { id: string; text: string };
   baseUrl: string;
   maxSteps?: number;
-  /** Stop once input+output tokens exceed this. */
+  /** Stop (verdict inconclusive) once input+output tokens exceed this. Default ${DEFAULT_BUDGET_TOKENS}; 0 means no limit. */
   budgetTokens?: number;
   checkLinks?: boolean;
 }
@@ -95,11 +102,15 @@ export async function verifyCriterion(opts: VerifyCriterionOptions): Promise<Age
   const maxSteps = opts.maxSteps ?? 15;
   const detectors = new Detectors(page, { baseUrl, checkLinks: opts.checkLinks });
   const origin = new URL(baseUrl).origin;
-  const result: AgentResult = { outcome: 'max-steps', actions: [], violations: [], findings: [], steps: 0, usage: { input: 0, output: 0 } };
+  const budget = Math.max(0, opts.budgetTokens ?? DEFAULT_BUDGET_TOKENS);
+  const result: AgentResult = { outcome: 'max-steps', actions: [], violations: [], findings: [], steps: 0, usage: { input: 0, output: 0 }, budgetTokens: budget };
   let lastSnap = '';
+  // What the model last saw of the page, and how many diffs it has had since a full snapshot.
+  let shown: string | undefined;
+  let diffsSinceFull = 0;
   let pending: { title: string; expected: string; actual: string } | undefined;
 
-  const observe = async (): Promise<string> => {
+  const observe = async (forceFull = false): Promise<string> => {
     const snap = (await page.snapshot()).text;
     lastSnap = snap;
     const found = await detectors.run(Math.max(0, result.actions.length - 1), snap);
@@ -108,7 +119,20 @@ export async function verifyCriterion(opts: VerifyCriterionOptions): Promise<Age
     const lines = [`URL: ${url}`];
     if (found.length > 0) lines.push('Automatic detector findings:', ...found.map((f) => `- [severity ${f.severity}] ${f.title}`));
     const body = snap.length > MAX_SNAPSHOT_CHARS ? snap.slice(0, MAX_SNAPSHOT_CHARS) + '\n… (snapshot truncated)' : snap;
-    lines.push('Snapshot:', body || '(empty page)');
+    // After the first snapshot send only what changed: a full one at least every FULL_EVERY views,
+    // when asked for, or when the diff would be as long as the page.
+    const diff = !forceFull && shown !== undefined && diffsSinceFull < FULL_EVERY - 1 ? diffSnapshots(shown, body) : undefined;
+    if (diff && diff.text === '') {
+      lines.push('Snapshot: unchanged since the previous snapshot.');
+      diffsSinceFull++;
+    } else if (diff && diff.text.length < body.length) {
+      lines.push(diff.text);
+      diffsSinceFull++;
+    } else {
+      lines.push('Snapshot:', body || '(empty page)');
+      diffsSinceFull = 0;
+    }
+    shown = body;
     return lines.join('\n');
   };
 
@@ -147,7 +171,7 @@ export async function verifyCriterion(opts: VerifyCriterionOptions): Promise<Age
 
     switch (call.name) {
       case 'snapshot':
-        return part(await observe());
+        return part(await observe(true)); // asked for explicitly: always the whole page
       case 'screenshot': {
         const png = await page.screenshot();
         return { id: call.id, text: 'Screenshot attached.', imageBase64: png.toString('base64') };
@@ -244,8 +268,9 @@ export async function verifyCriterion(opts: VerifyCriterionOptions): Promise<Age
       break;
     }
     messages.push({ role: 'assistant', text: res.text, toolCalls: res.toolCalls, raw: res.raw });
-    if (opts.budgetTokens !== undefined && result.usage.input + result.usage.output > opts.budgetTokens) {
+    if (budget > 0 && result.usage.input + result.usage.output > budget) {
       result.outcome = 'budget';
+      result.summary = `Stopped: used ${result.usage.input + result.usage.output} tokens, over the budget of ${budget}. The verdict is inconclusive.`;
       break;
     }
     if (res.toolCalls.length === 0) {

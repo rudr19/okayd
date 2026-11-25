@@ -86,6 +86,12 @@ export interface RevertFile {
 /** A criterion line carrying this marker was already true before the PR. */
 export const PRE_MARKER = '{pre}';
 export const hasPreMarker = (text: string): boolean => text.includes(PRE_MARKER);
+/**
+ * A criterion is "already true before this change" when its proof line has the `pre` token in the
+ * leading block (`{#id E3 pre}`, parsed into `criterion.pre`), or, for older proof files, a bare
+ * `{pre}` marker anywhere in its text.
+ */
+export const isPre = (c: { pre?: boolean; text: string }): boolean => c.pre === true || hasPreMarker(c.text);
 
 export interface Allow {
   allowPreexisting?: boolean;
@@ -119,6 +125,7 @@ export async function techniqueFindings(dir: string, proof: ProofFile, allow: Al
   const out: Finding[] = [];
   const hash = criteriaHash(proof);
   const text = new Map(proof.criteria.map((c) => [c.id, c.text]));
+  const pre = new Set(proof.criteria.filter(isPre).map((c) => c.id));
 
   const diff = await readJson(dir, `diff-${proof.issue}.json`);
   if (diff.problem) out.push({ message: `#${proof.issue}: ${diff.problem}` });
@@ -131,10 +138,10 @@ export async function techniqueFindings(dir: string, proof: ProofFile, allow: Al
         if (label === undefined) continue;
         if (c.status === 'regressed') {
           out.push({ id: c.id, message: `#${proof.issue} criterion ${c.id} REGRESSED: its tests passed on the base commit and fail on HEAD. ${label}` });
-        } else if (c.status === 'not-differential' && !(c.allowed === true || allow.allowPreexisting === true || hasPreMarker(label))) {
+        } else if (c.status === 'not-differential' && !(c.allowed === true || allow.allowPreexisting === true || pre.has(c.id))) {
           out.push({
             id: c.id,
-            message: `#${proof.issue} criterion ${c.id} is NOT DIFFERENTIAL: its tests pass on the base commit too, so they do not prove this change. Add a test that fails without the change, mark the criterion ${PRE_MARKER} if it was already true before this PR, or pass --allow-preexisting. ${label}`,
+            message: `#${proof.issue} criterion ${c.id} is NOT DIFFERENTIAL: its tests pass on the base commit too, so they do not prove this change. Add a test that fails without the change, mark the criterion pre (for example {#${c.id} pre}) if it was already true before this PR, or pass --allow-preexisting. ${label}`,
           });
         }
       }
