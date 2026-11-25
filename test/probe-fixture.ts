@@ -23,6 +23,8 @@ export interface Bugs {
   backBug?: boolean;
   /** The server answers 500 to long notes. */
   error500?: boolean;
+  /** A "Pay now" button that collapses to nothing on a phone. */
+  collapse?: boolean;
 }
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -57,7 +59,7 @@ export async function startProbeApp(bugs: Bugs = {}): Promise<ProbeApp> {
     if (req.url === '/items.json') return send(JSON.stringify(items), 200, 'application/json');
     if (req.url === '/about') return send('<!doctype html><title>About</title><h1>About</h1><p>Plain page.</p><a href="/">Home</a>');
     const li = (i: string): string => `<li>${bugs.xss ? i : esc(i)}</li>`;
-    const css = `body{font-family:sans-serif;margin:16px}li{overflow-wrap:anywhere}input{max-width:100%}${bugs.noFocus ? 'button,input,a{outline:none}' : ''}`;
+    const css = `body{font-family:sans-serif;margin:16px}li{overflow-wrap:anywhere}input{max-width:100%}${bugs.noFocus ? 'button,input,a{outline:none}' : ''}${bugs.collapse ? '@media (max-width:400px){#pay{width:0;height:0;padding:0;border:0;overflow:hidden}}' : ''}`;
     const addLi = bugs.xss ? 'li.innerHTML=v' : 'li.textContent=v';
     const offlineHandler = bugs.blankOffline ? "document.body.innerHTML=''" : "status.textContent='You appear to be offline'";
     const guard = (expr: string): string => (bugs.crashOffline ? expr : `${expr}.catch(function(){ ${offlineHandler} })`);
@@ -67,6 +69,7 @@ export async function startProbeApp(bugs: Bugs = {}): Promise<ProbeApp> {
 ${bugs.overflow ? '<div style="width:640px;background:#eee">A wide banner</div>' : ''}
 <form id="f"><label>Note <input id="note" autocomplete="off"></label> <button type="submit" id="save">Save</button></form>
 <button type="button" id="refresh">Refresh</button>
+${bugs.collapse ? '<button type="button" id="pay">Pay now</button>' : ''}
 ${bugs.unreachable ? '<div role="button" onclick="document.getElementById(\'status\').textContent=\'Bought\'">Buy now</div>' : '<button type="button" onclick="document.getElementById(\'status\').textContent=\'Bought\'">Buy now</button>'}
 <p id="status"></p>
 <ul id="items">${items.map(li).join('')}</ul>
@@ -94,6 +97,36 @@ ${bugs.backBug ? `document.getElementById('settings').addEventListener('click',f
     url: `http://127.0.0.1:${port}`,
     items,
     get posts() { return app.posts; },
+    close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }),
+  };
+}
+
+/** A clean page that uses patterns a naive check would flag: none of this is a bug. */
+export async function startAwkwardApp(): Promise<{ url: string; close(): Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    if (req.url === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Awkward</title><style>
+body{font-family:sans-serif;margin:16px}
+.skip{position:absolute;left:-9999px;top:0}.skip:focus{left:8px;top:8px;background:#fff;outline:2px solid #00f}
+nav#menu{position:fixed;top:0;left:0;width:240px;transform:translateX(0);background:#eee}
+@media (max-width:400px){nav#menu{transform:translateX(-100%)}}
+main{margin-left:260px}@media (max-width:400px){main{margin-left:0}}
+button.bg{outline:none;background:#eee;border:0;padding:6px}button.bg:focus{background:#9cf}
+button.sh{outline:none}button.sh:focus{box-shadow:0 0 0 3px #00f}
+</style></head><body>
+<a class="skip" href="#main">Skip to content</a>
+<nav id="menu"><a href="/about">About us</a> <button type="button">Menu item</button></nav>
+<main id="main"><h1>Awkward but fine</h1>
+<div role="tablist"><button role="tab" tabindex="0" aria-selected="true">One</button><button role="tab" tabindex="-1" aria-selected="false">Two</button></div>
+<fieldset><legend>Size</legend><label><input type="radio" name="size" value="s"> Small</label> <label><input type="radio" name="size" value="m"> Medium</label></fieldset>
+<button type="button" class="bg">Background focus</button> <button type="button" class="sh">Shadow focus</button>
+<input aria-label="Search" type="text">
+</main></body></html>`);
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     close: () => new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); }),
   };
 }

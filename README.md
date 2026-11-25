@@ -442,7 +442,7 @@ severity 3 or more refutes the criterion and writes the usual `.okproof/repro/<i
 | --- | --- | --- |
 | `persistence` | fills the first form, submits, and the app says it saved (a success message or a new list item); a fresh page load no longer shows the value | save, persist, reload, refresh, stored, remember, "still there" |
 | `back-forward` | follows up to 3 same-origin links and goes Back; wrong URL, blank page, lost heading, uncaught exceptions | back button, go back, history |
-| `double-submit` | clicks the submit button twice in the same tick; the same write is sent twice, or the item is listed twice | submit, form, order, checkout, duplicate, twice |
+| `double-submit` | clicks each submit button (up to 3) twice in the same tick; the same write is sent twice, or the item is listed twice | submit, form, order, checkout, duplicate, twice |
 | `narrow-viewport` | 375x812: sideways scrolling, and controls that were usable at desktop width but now have zero size or sit off screen (fixed or transformed off-canvas menus are left alone) | mobile, phone, responsive, viewport, narrow, 375 |
 | `keyboard` | tabs through the page: clickable things Tab never lands on (a `div` with `onclick`, `tabindex="-1"` on a button) and focused controls with no visible change | keyboard, accessible, a11y, focus, tab order |
 | `offline` | goes offline, uses the page's buttons: uncaught exceptions or a blank page instead of a message | offline, lost connection, network failure |
@@ -459,8 +459,9 @@ npx okproof verify --url https://preview.example.com                 # probes fi
 `--probes-only` never reads a key and never calls a model. A criterion with no matching
 probe is reported `inconclusive` (`no-probe`), and one the probes could not refute is also
 `inconclusive` (`probes-clean`): a clean probe run does not prove the criterion holds.
-By default the model runs only for criteria a probe did not refute, and the run ends with
-the saving, for example `probes covered 4/6 criteria with 0 model tokens; model used for 2
+By default the model runs only for criteria a probe did not refute, so the saving comes from
+criteria probes refute: on an app with no bugs the probes find, the model still runs for every
+criterion. The run ends with the saving, for example `probes covered 4/6 criteria with 0 model tokens; model used for 2
 (1 had no matching probe, 1 survived their probes)`. Without a key the probes still run and
 the remaining criteria report why; `--no-probes` restores the model-only behaviour.
 Probes act on the app: they type, click and submit, so point them at a preview or test
@@ -469,8 +470,8 @@ says so rather than passing silently.
 
 Known limits: probes fill every text field with the same text and use the first
 submit-like button, so forms with validated fields (email, number) may reject the input;
-the persistence probe expects a visible sign of success before it expects the data back;
-the offline probe uses the page's buttons and does not test service-worker reloads; the
+the persistence probe submits, then loads the page again with a fresh navigation (Chrome restores typed form values on Reload, which would hide the bug) and expects a visible sign of success before it expects the data back;
+the offline probe uses the page's buttons and never reloads, because without a service worker every site shows the browser's own error page offline; the
 keyboard probe covers the top-level document only (no iframes, no focus traps in modals).
 
 **Page load waits.** `--wait-until load|domcontentloaded|networkidle` (and

@@ -200,16 +200,21 @@ const doubleSubmit: Probe = {
     const info = await s.start();
     if (!info) return;
     const entries = await s.entries();
-    const submit = submitTarget(entries, info);
-    if (!submit) { s.note = 'no submit button'; return; }
+    const buttons = info.submits.map((n) => entries.find((e) => e.role === 'button' && e.name === n)).filter((e): e is RefEntry => !!e);
+    if (buttons.length === 0) { s.note = 'no submit button'; return; }
     const boxes = entries.filter(isTextbox);
-    const marker = boxes.length > 0 ? s.marker() : '';
-    if (marker && !(await fillForm(s, boxes, marker))) return;
-    if (!(await s.step({ type: 'dblclick', ...target(submit) }))) return;
-    await s.claim(
-      { title: this.title, expected: 'one click-pair is one submission' },
-      { type: 'assertCheck', check: { kind: 'singleSubmit', marker } },
-    );
+    let first = true;
+    for (const submit of buttons) {
+      if (!first && !(await s.step({ type: 'goto', url: info.path }))) return;
+      first = false;
+      const marker = boxes.length > 0 ? s.marker() : '';
+      if (marker && !(await fillForm(s, boxes, marker))) return;
+      if (!(await s.step({ type: 'dblclick', ...target(submit) }))) return;
+      await s.claim(
+        { title: `${this.title} (${JSON.stringify(submit.name)})`, expected: 'one click-pair is one submission' },
+        { type: 'assertCheck', check: { kind: 'singleSubmit', marker } },
+      );
+    }
   },
 };
 

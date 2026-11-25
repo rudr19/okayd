@@ -9,7 +9,7 @@ import { verifyWithProbes, savingsLine } from '../src/verify/probe-run.js';
 import { replayOnly } from '../src/verify/run.js';
 import { ScriptedModel } from '../src/verify/model.js';
 import type { VerifyFile } from '../src/verify/types.js';
-import { startProbeApp, type Bugs } from './probe-fixture.js';
+import { startAwkwardApp, startProbeApp, type Bugs } from './probe-fixture.js';
 import { skip } from './verify-fixture.js';
 
 const ids = (c: string): string[] => matchProbes(c).map((p) => p.id);
@@ -33,6 +33,7 @@ const BUGS: { name: string; bugs: Bugs; probe: ProbeId; title: RegExp; detail?: 
   { name: 'lost on reload', bugs: { lose: true }, probe: 'persistence', title: /Saved data is lost after reload/ },
   { name: 'double submit duplicates', bugs: { dup: true }, probe: 'double-submit', title: /Double click submits twice/, detail: /same request 2 times|2 list items/ },
   { name: 'overflow at 375px', bugs: { overflow: true }, probe: 'narrow-viewport', title: /does not fit a 375px phone screen/, detail: /\d+px wide in a 375px viewport/ },
+  { name: 'control collapses to zero size on a phone', bugs: { collapse: true }, probe: 'narrow-viewport', title: /does not fit a 375px phone screen/, detail: /"Pay now" has zero size/ },
   { name: 'button unreachable by Tab', bugs: { unreachable: true }, probe: 'keyboard', title: /Controls cannot be reached with the keyboard/, detail: /Buy now/ },
   { name: 'no visible focus', bugs: { noFocus: true }, probe: 'keyboard', title: /no visible focus indicator/ },
   { name: 'XSS echo', bugs: { xss: true }, probe: 'hostile-input', title: /rendered unescaped \(XSS\)/ },
@@ -70,6 +71,21 @@ test('a clean app produces no findings from any probe, and every probe really ra
       assert.deepEqual(r.findings.map((f) => f.title), [], `${p.id} reported a false positive`);
       assert.equal(r.refuted, false);
       assert.ok(r.actions.some((a) => a.type === 'assertCheck' || a.type === 'assertText'), `${p.id} made no assertion`);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('awkward-but-correct patterns (off-canvas menu, skip link, roving tabs, radios, non-outline focus) are not findings', { skip, timeout: 120000 }, async () => {
+  const app = await startAwkwardApp();
+  try {
+    for (const id of ['keyboard', 'narrow-viewport'] as ProbeId[]) {
+      const r = await runProbe(probeById(id)!, { baseUrl: app.url });
+      assert.equal(r.error, undefined);
+      assert.equal(r.applicable, true, `${id}: ${r.note}`);
+      assert.deepEqual(r.findings.map((f) => f.title + ' :: ' + f.detail), [], `${id} flagged a legitimate pattern`);
+      assert.ok(r.actions.some((a) => a.type === 'assertCheck'));
     }
   } finally {
     await app.close();
