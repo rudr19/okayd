@@ -77,13 +77,13 @@ export function exampleProof(issue?: string, title?: string): { name: string; co
     const t = title?.trim() || `Issue #${issue}`;
     return {
       name: `${issue}.md`,
-      content: `## #${issue} ${t}\n- [ ] Replace this with the first acceptance criterion (or run: npx okproof sync --issue ${issue})\n`,
+      content: `## #${issue} ${t} {placeholder}\n- [ ] Replace this with the first acceptance criterion (or run: npx okproof sync --issue ${issue})\n`,
     };
   }
   return {
     name: '1.md',
     content:
-      '## #1 Example: replace with your own acceptance criteria\n' +
+      '## #1 Example: replace with your own acceptance criteria {placeholder}\n' +
       '- [ ] A user can do the first thing the issue asks for\n' +
       '- [ ] The second thing the issue asks for works and is visible in the UI\n',
   };

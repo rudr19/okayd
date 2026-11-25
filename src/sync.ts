@@ -124,8 +124,9 @@ function items(texts: string[]): Item[] {
   });
 }
 
-function render(issue: number, title: string, list: Item[]): string {
-  const head = `## #${issue}${title ? ` ${title}` : ''}`;
+function render(issue: number, title: string, list: Item[], requireVerify = false): string {
+  // {verify} survives a rewrite, or syncing would silently turn verification off. {placeholder} does not.
+  const head = `## #${issue}${title ? ` ${title}` : ''}${requireVerify ? ' {verify}' : ''}`;
   const out = [head, ...list.map((t) => `- [ ] ${t.stableId ? `{#${t.stableId}} ` : ''}${t.text}`)].join('\n') + '\n';
   parseProof(out); // refuses duplicate or invalid ids before anything is written
   return out;
@@ -203,6 +204,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
 
   const old: Array<{ text: string; index: number; stableId?: string }> = [];
   let oldTitle = '';
+  let oldRequireVerify = false;
   if (existing !== undefined) {
     try {
       const proof = parseProof(existing);
@@ -210,6 +212,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
         throw new Error(`${path} describes issue #${proof.issue}, not #${opts.issue}.`);
       }
       oldTitle = norm(proof.title);
+      oldRequireVerify = proof.requireVerify === true;
       for (const c of proof.criteria) old.push({ text: norm(c.text), index: c.index, stableId: c.stableId });
     } catch (e) {
       // A file with a heading for another issue is a real conflict; an empty or
@@ -249,7 +252,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
 
   if (result.changed && opts.write !== false) {
     await mkdir(dir, { recursive: true });
-    await writeFile(path, render(opts.issue, title, finalItems));
+    await writeFile(path, render(opts.issue, title, finalItems, oldRequireVerify));
   }
   return result;
 }

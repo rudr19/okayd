@@ -142,11 +142,12 @@ export interface GateArgs {
   results?: string;
   requireIssues: string[];
   allowEmpty: boolean;
+  requireVerify: boolean;
 }
 
 /** Parses the arguments after `okproof gate`. `--format` is handled by the caller. */
 export function parseGateArgs(list: string[]): GateArgs {
-  const out: GateArgs = { dir: '.okproof', requireIssues: [], allowEmpty: false };
+  const out: GateArgs = { dir: '.okproof', requireIssues: [], allowEmpty: false, requireVerify: false };
   let dirSet = false;
   const need = (flag: string, v: string | undefined): string => {
     if (v === undefined || v.startsWith('--')) throw new Error(`${flag} needs a value.`);
@@ -155,6 +156,7 @@ export function parseGateArgs(list: string[]): GateArgs {
   for (let i = 0; i < list.length; i++) {
     const a = list[i]!;
     if (a === '--allow-empty') out.allowEmpty = true;
+    else if (a === '--require-verify') out.requireVerify = true;
     else if (a === '--results') out.results = need(a, list[++i]);
     else if (a.startsWith('--results=')) out.results = a.slice('--results='.length);
     else if (a === '--require-issues') out.requireIssues.push(...parseIssueList(need(a, list[++i])));
@@ -190,7 +192,7 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
       return 2;
     }
   }
-  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, ledgers });
+  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, requireVerify: a.requireVerify, ledgers });
   const extra = [...(await proofNameProblems(a.dir)), ...(await requiredIssueProblems(a.dir, a.requireIssues))];
   for (const n of result.notes) console.log(n);
   if (a.results === undefined) for (const w of await unboundLedgerWarnings(a.dir)) console.error(w);
