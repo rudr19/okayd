@@ -142,7 +142,23 @@ export async function prepareAuth(o: AuthOptions): Promise<PreparedAuth> {
   return {
     active: cookies.length > 0 || origins.length > 0 || headers !== undefined || login !== undefined,
     async apply(page, baseUrl) {
-      if (headers) await page.command('Network.setExtraHTTPHeaders', { headers });
+      if (headers) {
+        // Credentials go to the app's own origin only. A repro file, a redirect or the page itself may
+        // point at another host, and that host must never see them.
+        const appOrigin = new URL(baseUrl).origin;
+        const names = new Set(Object.keys(headers).map((n) => n.toLowerCase()));
+        await page.rewriteRequestHeaders((url, current) => {
+          let sameOrigin = false;
+          try {
+            sameOrigin = new URL(url).origin === appOrigin;
+          } catch {
+            /* not a URL: treat as foreign */
+          }
+          const kept = Object.fromEntries(Object.entries(current).filter(([n]) => !names.has(n.toLowerCase())));
+          // Foreign request: strip our names too (a redirect can carry them along from the first hop).
+          return sameOrigin ? { ...kept, ...headers } : kept;
+        });
+      }
       if (cookies.length > 0) await page.command('Network.setCookies', { cookies: cookies.map((c, i) => cookieParams(c, i, baseUrl)) });
       for (const x of origins) {
         await page.command('Page.addScriptToEvaluateOnNewDocument', { source: localStorageScript(x.origin, x.localStorage!) });

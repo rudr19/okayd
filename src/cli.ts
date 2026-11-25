@@ -152,9 +152,9 @@ async function runVerify(): Promise<number> {
     }
     let reproduced = false;
     for (const r of results) {
-      console.log(`${r.criterionId}: ${r.reproduced ? 'BUG REPRODUCED' : 'not reproduced'}`);
+      console.log(`${r.criterionId}: ${r.refused ? 'REFUSED (repro leaves the app origin)' : r.reproduced ? 'BUG REPRODUCED' : 'not reproduced'}`);
       for (const l of r.lines) console.log(`  ${l}`);
-      reproduced ||= r.reproduced;
+      reproduced ||= r.reproduced || r.refused === true;
     }
     return reproduced ? 1 : 0;
   }

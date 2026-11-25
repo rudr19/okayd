@@ -138,6 +138,31 @@ export class Page {
     return this.cdp.send<T>(method, params, this.sessionId);
   }
 
+  /**
+   * Lets `rewrite` change the headers of every request this page makes (Fetch domain), per request URL.
+   * Return the full header list to send, or undefined to leave the request alone. Used to add credentials
+   * to requests for the app's own origin only; Network.setExtraHTTPHeaders would add them to every host.
+   */
+  async rewriteRequestHeaders(rewrite: (url: string, headers: Record<string, string>) => Record<string, string> | undefined): Promise<void> {
+    this.cdp.on('Fetch.requestPaused', (p, sid) => {
+      if (sid !== this.sessionId) return;
+      const requestId = p.requestId as string;
+      const cont = (params: Record<string, unknown> = {}): void => {
+        this.cdp.send('Fetch.continueRequest', { requestId, ...params }, this.sessionId).catch(() => { /* the request is gone */ });
+      };
+      // A response-stage pause (not requested) or an error pause is passed through untouched.
+      if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) return cont();
+      try {
+        const headers = rewrite(String(p.request?.url ?? ''), { ...(p.request?.headers ?? {}) });
+        if (!headers) return cont();
+        cont({ headers: Object.entries(headers).map(([name, value]) => ({ name, value })) });
+      } catch {
+        cont();
+      }
+    });
+    await this.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
+  }
+
   /** Raw DevTools Protocol command on this page's session, for things the driver has no method for (cookies, headers, ...). */
   command<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     return this.send<T>(method, params);

@@ -179,6 +179,12 @@ export async function verify(o: VerifyOptions): Promise<VerifyRun[]> {
 }
 
 export interface ReplayOnlyResult {
+  /** The repro file name, e.g. "142.1.json". */
+  file?: string;
+  /** True when the replay stopped early (an element was gone, or a goto left the app origin). */
+  aborted?: boolean;
+  /** True when a goto to another origin was refused. The repro is not trustworthy; treat it as a failure. */
+  refused?: boolean;
   criterionId: string;
   /** True when the bug is still there. */
   reproduced: boolean;
@@ -196,8 +202,30 @@ export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: st
     names = [];
   }
   const out: ReplayOnlyResult[] = [];
+  // Credentials must never follow a repro file to a host the repro (a file anyone can edit) names.
+  const repros = new Map<string, ReproFile>();
   for (const name of names) {
     const repro = JSON.parse(await readFile(join(dir, 'repro', name), 'utf8')) as ReproFile;
+    repros.set(name, repro);
+    if (auth.active) {
+      if (o.baseUrl === undefined) {
+        throw new Error('--replay-only with --header, --storage-state, --cookie or --login needs --url <baseUrl>: without it the host comes from the repro file, and your credentials would be sent there.');
+      }
+      let want: string;
+      let have: string;
+      try {
+        want = new URL(o.baseUrl).origin;
+        have = new URL(repro.baseUrl).origin;
+      } catch {
+        throw new Error(`repro/${name}: baseUrl is not a URL. Refusing to replay it with credentials.`);
+      }
+      if (want !== have) {
+        throw new Error(`repro/${name} was recorded against ${have}, not ${want} (--url). Refusing to replay it with credentials; re-run okproof verify against ${want} to record a new repro.`);
+      }
+    }
+  }
+  for (const name of names) {
+    const repro = repros.get(name)!;
     const { result } = await freshReplay(repro.actions, { baseUrl: o.baseUrl ?? repro.baseUrl, chrome: o.chrome, waitUntil: o.waitUntil, checkLinks: repro.checkLinks, auth });
     const lines: string[] = [];
     let reproduced = false;
@@ -219,7 +247,7 @@ export async function replayOnly(o: { dir?: string; issue?: string; baseUrl?: st
       }
     }
     if (result.abortedAt !== undefined) lines.push(`replay stopped at step ${result.abortedAt + 1}: ${result.abortReason}`);
-    out.push({ criterionId: repro.criterionId, reproduced, lines });
+    out.push({ file: name, criterionId: repro.criterionId, reproduced, lines, ...(result.abortedAt !== undefined ? { aborted: true } : {}), ...(result.refusedOrigin ? { refused: true } : {}) });
   }
   return out;
 }

@@ -21,6 +21,8 @@ export interface ReplayResult {
   /** Index of the first action that could not run (the replay stops there), if any. */
   abortedAt?: number;
   abortReason?: string;
+  /** True when the replay stopped because an action tried to leave the app origin (a crafted or stale repro). */
+  refusedOrigin?: boolean;
   /** Assertion index to whether it failed, for every assertion that ran. */
   assertionFailed: Map<number, boolean>;
 }
@@ -35,8 +37,26 @@ export interface ReplayOptions {
 export async function replay(actions: Action[], page: Page, opts: ReplayOptions): Promise<ReplayResult> {
   const detectors = new Detectors(page, { baseUrl: opts.baseUrl, checkLinks: opts.checkLinks });
   const result: ReplayResult = { steps: [], findings: [], assertionFailed: new Map() };
+  const appOrigin = new URL(opts.baseUrl).origin;
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i]!;
+    if (action.type === 'goto') {
+      // A repro file is data from the repository: it must not steer the replay to another host.
+      let target: string;
+      try {
+        target = new URL(action.url, opts.baseUrl).origin;
+      } catch {
+        target = '';
+      }
+      if (target !== appOrigin) {
+        const error = `goto ${JSON.stringify(action.url)} refused: it leaves the app origin ${appOrigin}`;
+        result.steps.push({ index: i, action, ran: false, error });
+        result.abortedAt = i;
+        result.abortReason = error;
+        result.refusedOrigin = true;
+        break;
+      }
+    }
     const r = await execute(page, action, { baseUrl: opts.baseUrl, resolveByLabel: true });
     result.steps.push({ index: i, action, ran: r.ran, error: r.error, passed: r.passed, message: r.message });
     if (!r.ran) {
