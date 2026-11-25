@@ -12,6 +12,7 @@ import { parseCTRF } from './ctrf.js';
 import { evaluateGate } from './gate.js';
 import { buildLedger, type Ledger, type TestOutcome } from './ledger.js';
 import { parseJUnit } from './junit.js';
+import { readResultsFile } from './results-file.js';
 import { lintOutcomes } from './lint.js';
 import { parseProof } from './proof.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
@@ -51,7 +52,7 @@ export async function ledgersFromResults(
   resultsFile: string,
   opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; report?: (line: string) => void } = {},
 ): Promise<Ledger[]> {
-  const text = await readFile(resultsFile, 'utf8');
+  const text = await readResultsFile(resultsFile);
   let outcomes = parseResults(text, resultsFile, opts.format);
   if (opts.lint) {
     const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance });

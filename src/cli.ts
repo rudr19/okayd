@@ -23,6 +23,7 @@ import { parseProof, compareToIssueBody } from './proof.js';
 import { fetchIssue, syncProofFile, describeSync } from './sync.js';
 import { parseResults, runGate, sha256Hex, type LintRequest } from './trust.js';
 import { finalize } from './finalize.js';
+import { readResultsFile } from './results-file.js';
 import { AnthropicModel, MISSING_KEY_MESSAGE, type Effort } from './verify/model.js';
 import { replayOnly, verify } from './verify/run.js';
 import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
@@ -299,7 +300,7 @@ async function main(): Promise<number> {
       console.error(`Unknown --format "${format}". Use junit or ctrf. ${USAGE}`);
       return 2;
     }
-    const text = await readFile(file, 'utf8');
+    const text = await readResultsFile(file);
     let outcomes = parseResults(text, file, format);
     const lintReq = lintRequest();
     let lintFailed = false;
