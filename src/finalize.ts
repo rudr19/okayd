@@ -8,6 +8,7 @@ import { publishToGitHub } from './github.js';
 import { evaluateGate } from './gate.js';
 import { sha256Hex } from './trust.js';
 import { applyVerifyFile, criteriaHash, readVerifyFile } from './verify/ledger.js';
+import { applyTechniques } from './techniques.js';
 
 export interface FinalizeOptions {
   /** Folder holding proof files. Default ".okproof". */
@@ -47,6 +48,7 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified && verified.criteriaHash === criteriaHash(proof)) ledger = applyVerifyFile(ledger, verified);
     else if (verified) lines.push(`okproof #${ledger.issue}: verifier results are stale; re-run okproof verify or delete verify-${ledger.issue}.json (okproof gate will fail until then)`);
+    ledger = await applyTechniques(ledger, dir, proof);
     ledgers.push(ledger);
     await writeFile(join(dir, `ledger-${ledger.issue}.json`), JSON.stringify(ledger, null, 2));
     await writeFile(join(dir, `ledger-${ledger.issue}.md`), renderLedgerMarkdown(ledger));

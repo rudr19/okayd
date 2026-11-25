@@ -13,4 +13,7 @@ export { startMcpServer } from './mcp/server.js';
 export { createProtocol, type Protocol, type ProtocolOptions } from './mcp/protocol.js';
 export { tools as mcpTools, runTool, type ToolDefinition, type ToolContext, type ToolResult } from './mcp/tools.js';
 export { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria, type SyncResult, type SyncOptions, type FetchedIssue } from './sync.js';
+export { runDifferential, classify, type DiffOptions, type DiffResult } from './differential.js';
+export { runRevertCheck, groupFiles, type RevertOptions, type RevertResult } from './revert.js';
+export { techniqueFindings, applyTechniques, PRE_MARKER, type DiffFile, type RevertFile, type DiffStatus, type RevertStatus } from './techniques.js';
 export { evaluateGate, type GateOptions, type GateResult } from './gate.js';

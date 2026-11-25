@@ -38,6 +38,14 @@ inputs:
     description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
     required: false
     default: auto
+  differential:
+    description: 'Differential proof (zero tokens). "on" runs your tests on the PR base and on HEAD and fails criteria whose tests also pass on the base, so they do not prove the change; "off" skips it. Needs test-command and results, and a checkout with fetch-depth: 0.'
+    required: false
+    default: 'off'
+  test-command:
+    description: 'The command that runs your tests and writes the results file (required when differential is on). It runs through the shell in a temporary checkout of the base and of HEAD, with OKPROOF_SIDE set to base or head.'
+    required: false
+    default: ''
   node-version:
     description: Node.js version used to run okproof.
     required: false
@@ -106,6 +114,31 @@ runs:
       env:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/dist/src/cli.js" check "$DIR"
+
+    - name: Differential proof
+      shell: bash
+      env:
+        DIFFERENTIAL: ${{ inputs.differential }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        RESULTS: ${{ inputs.results }}
+        DIR: ${{ inputs.dir }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        case "$DIFFERENTIAL" in
+          off|'') exit 0 ;;
+          on) ;;
+          *) echo "differential must be off or on, got: $DIFFERENTIAL" >&2; exit 2 ;;
+        esac
+        if [ -z "$TEST_COMMAND" ] || [ -z "$RESULTS" ]; then
+          echo "differential: on needs the test-command and results inputs." >&2
+          exit 2
+        fi
+        base=()
+        [ -n "$BASE_REF" ] && base=(--base "origin/$BASE_REF")
+        # Exit 1 means some criterion is not proven by the change; the Gate step reports it. Only a failure to run stops here.
+        rc=0
+        node "$GITHUB_ACTION_PATH/dist/src/cli.js" diff "${base[@]}" --test "$TEST_COMMAND" --results "$RESULTS" "$DIR" || rc=$?
+        [ "$rc" -le 1 ] || exit "$rc"
 
     - name: Build ledgers from JUnit XML
       shell: bash

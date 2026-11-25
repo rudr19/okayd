@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { parseProof, type ProofFile } from './proof.js';
 import type { Ledger } from './ledger.js';
 import { criteriaHash, readVerifyFile } from './verify/ledger.js';
+import { techniqueFindings } from './techniques.js';
 
 export interface GateOptions {
   /** Pass when there is nothing to prove (no folder or no proof files). Default false. */
@@ -14,6 +15,10 @@ export interface GateOptions {
   issue?: string;
   /** Ledgers rebuilt in memory from this job's test results (trust.ts). When set, committed ledgers are ignored. */
   ledgers?: Ledger[];
+  /** Accept criteria whose tests also pass on the base commit (okproof diff). */
+  allowPreexisting?: boolean;
+  /** Accept criteria whose tests stay green when the change is reverted (okproof revert-check). */
+  allowUncovered?: boolean;
 }
 
 export interface GateResult {
@@ -146,6 +151,8 @@ export async function evaluateGate(dir: string, options: GateOptions = {}): Prom
     } else {
       notes.push(`#${proof.issue}: ${proof.criteria.length}/${proof.criteria.length} criteria met`);
     }
+    // Differential and revert-check results, when present, can fail a criterion the tests call met.
+    for (const f of await techniqueFindings(dir, proof, options)) problems.push(f.message);
   }
 
   // A ledger with no proof file means a proof file was deleted.
