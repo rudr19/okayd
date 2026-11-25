@@ -341,8 +341,10 @@ npx okproof gate --results junit.xml --lint
 A test lint finds weak (no assertion, or only trivial ones) is counted as having
 asserted nothing, so its criterion is `unproven`. Lint findings are matched to
 results by the `[okproof:<id>]` tag plus the test title. A count your runner
-does report stands, except for tests lint calls trivial. Relevance stays
-advisory unless you add `--strict-relevance`. After a bare `--lint`, a
+does report stands, except for tests lint calls trivial. A test lint calls
+unrelated does not fail ingest, but it keeps its criterion at evidence level E1,
+which fails the default E2 (see [Evidence levels](#evidence-levels)); add
+`--strict-relevance` to make ingest and the gate fail outright. After a bare `--lint`, a
 following word is read as the path; write `--lint=` to put the proof folder
 after it. `gate --lint` needs `--results`.
 
@@ -356,7 +358,9 @@ claimed criterion with the test body and reports:
 possibly unrelated: test 'login works' claims 5.1 ('A user can reset their password by email') but never mentions password, email, reset
 ```
 
-This is advisory: it prints warnings and exits 0. Add `--strict-relevance`
+`okproof lint` itself only prints warnings and exits 0 (when its findings feed a
+ledger with `--lint`, an unrelated test caps its criterion at E1; see
+[Evidence levels](#evidence-levels)). Add `--strict-relevance`
 (`strictRelevance: true` for `lintTests()` and the MCP tool) to make each one a
 failure (exit 1).
 
@@ -570,7 +574,7 @@ working directory):
 - `okproof_criteria` lists criteria and the `[okproof:<issue>.<n>]` tag for each test title.
 - `okproof_status` says "Done" or "Not done" and lists the unmet criteria. Call it before saying a task is finished.
 - `okproof_ingest_junit` builds ledgers from a JUnit XML report.
-- `okproof_lint` finds tagged tests with no assertion or only trivial ones, tests that never mention their criterion ("possibly unrelated", advisory; `strictRelevance` makes it fail), dangling tags and untested criteria. `okproof_status` reports criteria whose tests passed without asserting as unproven and names the tests.
+- `okproof_lint` finds tagged tests with no assertion or only trivial ones, tests that never mention their criterion ("possibly unrelated"; `okproof_lint` itself only warns, `strictRelevance` makes it fail), dangling tags and untested criteria. `okproof_status` reports criteria whose tests passed without asserting as unproven and names the tests.
 - `okproof_add_criterion` appends a criterion. Through this server agents can add criteria but not remove or edit them; that limit covers the MCP tools only, not direct file edits (see CODEOWNERS below).
 
 `skills/okproof/SKILL.md` is a Claude Code skill that tells agents to follow this
