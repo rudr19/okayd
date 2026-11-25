@@ -57,7 +57,7 @@ read-only.
 | `okproof gate` exits 1 unless every criterion met | `src/gate.ts`, now checked against proof files |
 | GitHub Action with inputs and outputs | `action.yml`, `scripts/action-outputs.mjs` |
 | `comment: false` and `OKPROOF_NO_COMMENT=1` | `action.yml`, `src/cli.ts` ingest branch |
-| `v0` moving tag | missing: nothing in `.github/workflows` moves it (release.yml only publishes to npm) |
+| `v0` moving tag | `.github/workflows/release.yml` (the `move-major-tag` job moves `v0` after a successful publish) |
 | Chrome driver, no dependencies, `OKPROOF_CHROME` | `src/driver/` |
 | `okproof verify` adversarial agent | `src/verify/agent.ts`, `src/verify/run.ts` |
 | Actions recorded, replay in a fresh browser decides | `src/verify/replay.ts`, `src/verify/run.ts` |

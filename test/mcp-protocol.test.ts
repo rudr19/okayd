@@ -32,7 +32,7 @@ test('ping replies with an empty result', async () => {
   assert.deepEqual(out[0].result, {});
 });
 
-test('tools/list exposes the four tools with schemas', async () => {
+test('tools/list exposes the five tools with schemas', async () => {
   const { out, send } = harness();
   await send({ jsonrpc: '2.0', id: 3, method: 'tools/list' });
   const tools = out[0].result.tools;

@@ -46,8 +46,6 @@ roadmap builds toward.
 
 "Proves" in the tagline is the product promise. This is exactly what is checked:
 
-"Proves" in the tagline is the product promise. This is exactly what is checked:
-
 - **Tests tagged to criteria.** A criterion is `met` only if a test that claims
   it with `[okproof:<id>]` passed.
 - **Assertion checks.** A tagged test that passed but made zero assertions does
