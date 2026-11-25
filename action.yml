@@ -96,7 +96,7 @@ outputs:
     description: '"true" if every ledger is proven, otherwise "false".'
     value: ${{ steps.outputs.outputs.proven }}
   summary:
-    description: One line per proof file, for example "okproof #142: 4/4 criteria met, proven".
+    description: 'One line per proof file, for example "okproof #142: 4/4 criteria met, proven".'
     value: ${{ steps.outputs.outputs.summary }}
 
 runs:
