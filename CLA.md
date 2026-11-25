@@ -9,4 +9,5 @@ By submitting a contribution to okproof you agree that:
 3. You keep the copyright in your contribution.
 
 Draft only. Have a lawyer review it before accepting outside contributions.
-Sign by commenting "I agree to the okproof CLA" on your first pull request.
+Sign by commenting "I have read the okproof CLA and I agree to it." on your first
+pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
