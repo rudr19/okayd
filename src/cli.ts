@@ -233,6 +233,7 @@ async function runSync(): Promise<number> {
   const dir = rest[0] ?? '.okproof';
   let title: string | undefined = v.get('title');
   let body: string;
+  let updatedAt: string | undefined;
   const bodyFile = v.get('body-file');
   if (bodyFile !== undefined) {
     body = await readFile(bodyFile, 'utf8');
@@ -267,8 +268,9 @@ async function runSync(): Promise<number> {
     });
     title = title ?? fetched.title;
     body = fetched.body;
+    updatedAt = fetched.updatedAt;
   }
-  const result = await syncProofFile({ dir, issue, title, body, write: !check });
+  const result = await syncProofFile({ dir, issue, title, body, write: !check, issueUpdatedAt: updatedAt });
   const { lines, warnings } = describeSync(issue, result, !check);
   for (const l of lines) console.log(l);
   for (const w of warnings) console.error(w);

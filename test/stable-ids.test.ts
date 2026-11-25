@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { withoutMarker } from '../src/provenance.js';
 import { claimedCriteria, issueBodyCriteria, parseProof } from '../src/proof.js';
 import { buildLedger } from '../src/ledger.js';
 import { evaluateGate } from '../src/gate.js';
@@ -75,7 +76,7 @@ test('sync preserves {#id} when it rewrites the proof file, and does not call it
     const r = await syncProofFile({ cwd, dir: '.okproof', issue: 142, title: 'Auth', body: next });
     assert.equal(r.changed, true);
     assert.deepEqual(r.renumbered, []);
-    const written = await readFile(join(cwd, '.okproof', '142.md'), 'utf8');
+    const written = withoutMarker(await readFile(join(cwd, '.okproof', '142.md'), 'utf8'));
     assert.equal(written, '## #142 Auth\n- [ ] {#login} A user can sign in\n- [ ] {#sign-out} A user can sign out\n- [ ] Brand new\n');
     assert.deepEqual(parseProof(written).criteria.map((c) => c.id), ['142.login', '142.sign-out', '142.3']);
   } finally {

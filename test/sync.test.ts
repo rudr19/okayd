@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { withoutMarker } from '../src/provenance.js';
 import { proofFromIssue, syncProofFile, fetchIssue, linkedIssues, issueCriteria } from '../src/sync.js';
 import { parseProof } from '../src/proof.js';
 
@@ -51,7 +52,7 @@ test('syncProofFile creates the file when missing', async () => {
   assert.equal(r.created, true);
   assert.equal(r.changed, true);
   assert.deepEqual(r.added.map((c) => c.id), ['3.1', '3.2']);
-  assert.equal(await readFile(join(cwd, '.okproof', '3.md'), 'utf8'), '## #3 T\n- [ ] a\n- [ ] b\n');
+  assert.equal(withoutMarker(await readFile(join(cwd, '.okproof', '3.md'), 'utf8')), '## #3 T\n- [ ] a\n- [ ] b\n');
 });
 
 test('syncProofFile keeps order and ids, appends new, drops removed, and is a no-op when in sync', async () => {
@@ -64,7 +65,7 @@ test('syncProofFile keeps order and ids, appends new, drops removed, and is a no
   assert.deepEqual(r.removed, []);
   assert.deepEqual(r.unchanged.map((c) => c.text), ['a', 'b', 'c']);
   assert.deepEqual(r.renumbered, []);
-  assert.equal(await readFile(join(cwd, 'p', '5.md'), 'utf8'), '## #5 T\n- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d\n');
+  assert.equal(withoutMarker(await readFile(join(cwd, 'p', '5.md'), 'utf8')), '## #5 T\n- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d\n');
   const again = await syncProofFile({ cwd, dir: 'p', issue: 5, title: 'T', body: '- [x] a\n- [ ] b\n- [ ] c\n- [ ] d' });
   assert.equal(again.changed, false);
 });
@@ -85,7 +86,7 @@ test('write:false reports drift without touching the file', async () => {
   await writeFile(join(cwd, 'p', '2.md'), '## #2 T\n- [ ] a\n');
   const r = await syncProofFile({ cwd, dir: 'p', issue: 2, title: 'T', body: '- [ ] a\n- [ ] b', write: false });
   assert.equal(r.changed, true);
-  assert.equal(await readFile(join(cwd, 'p', '2.md'), 'utf8'), '## #2 T\n- [ ] a\n');
+  assert.equal(withoutMarker(await readFile(join(cwd, 'p', '2.md'), 'utf8')), '## #2 T\n- [ ] a\n');
 });
 
 test('syncProofFile refuses a dir outside cwd, a bad issue, and a file for another issue', async () => {

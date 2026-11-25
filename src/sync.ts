@@ -12,6 +12,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatCriterionFlags, parseProof, splitCriterionFlags } from './proof.js';
 import { apiBase } from './github.js';
+import { describeDrift, driftCause, formatMarker, issueDigest, parseMarker, proofDigest, withoutMarker, type DriftCause } from './provenance.js';
 
 // Same pattern as src/github.ts (owner/name as GitHub allows them).
 const REPO = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
@@ -127,12 +128,26 @@ function items(texts: string[]): Item[] {
   });
 }
 
-function render(issue: number, title: string, list: Item[], requireVerify = false): string {
+function render(issue: number, title: string, list: Item[], requireVerify = false, issueRecord?: { issueSha256: string; updatedAt?: string }): string {
   // {verify} survives a rewrite, or syncing would silently turn verification off. {placeholder} does not.
   const head = `## #${issue}${title ? ` ${title}` : ''}${requireVerify ? ' {verify}' : ''}`;
-  const out = [head, ...list.map((t) => `- [ ] ${formatCriterionFlags({ id: t.stableId, level: t.level, pre: t.pre })}${t.text}`)].join('\n') + '\n';
-  parseProof(out); // refuses duplicate or invalid ids before anything is written
-  return out;
+  const items = list.map((t) => `- [ ] ${formatCriterionFlags({ id: t.stableId, level: t.level, pre: t.pre })}${t.text}`);
+  const plain = [head, ...items].join('\n') + '\n';
+  parseProof(plain); // refuses duplicate or invalid ids before anything is written
+  if (!issueRecord) return plain;
+  // The record line sits under the heading; its proof digest covers the file without that line.
+  return [head, formatMarker({ ...issueRecord, proofSha256: proofDigest(plain) }), ...items].join('\n') + '\n';
+}
+
+/** `existing` with its okproof:issue line replaced (or added under the heading), everything else kept as is. */
+function withRecord(existing: string, issueRecord: { issueSha256: string; updatedAt?: string }): string {
+  const bare = withoutMarker(existing);
+  const marker = formatMarker({ ...issueRecord, proofSha256: proofDigest(bare) });
+  const eol = bare.includes('\r\n') ? '\r\n' : '\n';
+  const lines = bare.split(eol);
+  const at = lines.findIndex((l) => l.startsWith('##'));
+  lines.splice(at < 0 ? 0 : at + 1, 0, marker);
+  return lines.join(eol);
 }
 
 /** Renders a proof file for an issue. Throws if the issue lists no criteria. */
@@ -165,6 +180,10 @@ export interface SyncResult {
   /** Kept criteria whose id changed because an earlier one was removed: tests tagged with `from` must be re-tagged `to`. */
   renumbered: Array<{ text: string; from: string; to: string }>;
   titleChanged: boolean;
+  /** Why an existing proof file differs from the issue (set only when it does): see provenance.ts. */
+  drift?: DriftCause;
+  /** The okproof:issue line was added or refreshed without any criterion changing. */
+  recordRefreshed?: boolean;
 }
 
 export interface SyncOptions {
@@ -176,6 +195,8 @@ export interface SyncOptions {
   write?: boolean;
   /** The directory `dir` must stay inside. Default process.cwd(). */
   cwd?: string;
+  /** The issue's updated_at, recorded for people to read (never compared). */
+  issueUpdatedAt?: string;
 }
 
 /**
@@ -197,6 +218,7 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
   const wantedTexts = issueCriteria(opts.body ?? '');
   if (wantedTexts.length === 0) throw new Error(noCriteria(opts.issue));
   const wanted = items(wantedTexts);
+  const issueRecord = { issueSha256: issueDigest(title, wantedTexts), ...(opts.issueUpdatedAt ? { updatedAt: opts.issueUpdatedAt } : {}) };
 
   let existing: string | undefined;
   try {
@@ -253,9 +275,21 @@ export async function syncProofFile(opts: SyncOptions): Promise<SyncResult> {
   };
   result.changed = result.created || result.added.length > 0 || result.removed.length > 0 || result.titleChanged;
 
+  if (existing !== undefined && result.changed) {
+    result.drift = driftCause(parseMarker(existing), { issueSha256: issueRecord.issueSha256, proofSha256: proofDigest(existing) });
+  }
+
   if (result.changed && opts.write !== false) {
     await mkdir(dir, { recursive: true });
-    await writeFile(path, render(opts.issue, title, finalItems, oldRequireVerify));
+    await writeFile(path, render(opts.issue, title, finalItems, oldRequireVerify, issueRecord));
+  } else if (!result.changed && existing !== undefined && opts.write !== false) {
+    // In step with the issue: only record where the file came from. Anything else in the file is left alone.
+    const have = parseMarker(existing);
+    const stale = have?.issueSha256 !== issueRecord.issueSha256 || have.proofSha256 !== proofDigest(existing) || (opts.issueUpdatedAt !== undefined && have.updatedAt !== opts.issueUpdatedAt);
+    if (stale) {
+      await writeFile(path, withRecord(existing, issueRecord));
+      result.recordRefreshed = true;
+    }
   }
   return result;
 }
@@ -268,6 +302,7 @@ export function describeSync(issue: number, r: SyncResult, wrote: boolean): { li
   if (r.created) lines.push(`#${issue}: proof file ${verb}created at ${r.path} (${r.added.length} criteria)`);
   else if (!r.changed) lines.push(`#${issue}: proof file is in sync (${r.unchanged.length} unchanged)`);
   else lines.push(`#${issue}: proof file ${verb}updated: ${r.added.length} added, ${r.removed.length} removed, ${r.unchanged.length} unchanged${r.titleChanged ? ', title changed' : ''}`);
+  if (r.drift !== undefined) lines.push(`  why: ${describeDrift(r.drift, issue)}`);
   for (const a of r.added) lines.push(`  + [okproof:${a.id}] ${a.text}`);
   for (const x of r.removed) lines.push(`  - [okproof:${x.id}] ${x.text}`);
   if (r.renumbered.length > 0) {
@@ -280,6 +315,8 @@ export function describeSync(issue: number, r: SyncResult, wrote: boolean): { li
 export interface FetchedIssue {
   title: string;
   body: string;
+  /** The issue's updated_at when GitHub sent one. */
+  updatedAt?: string;
 }
 
 export interface FetchIssueOptions {
@@ -313,10 +350,10 @@ export async function fetchIssue(opts: FetchIssueOptions): Promise<FetchedIssue>
     throw new Error(`GitHub refused access (403) to ${opts.repo}#${opts.issue}: the token lacks permission or the rate limit is exhausted.`);
   }
   if (!res.ok) throw new Error(`Reading ${opts.repo}#${opts.issue} failed (${res.status}).`);
-  const data = (await res.json()) as { title?: unknown; body?: unknown; pull_request?: unknown };
+  const data = (await res.json()) as { title?: unknown; body?: unknown; pull_request?: unknown; updated_at?: unknown };
   if (data.pull_request) throw new Error(`#${opts.issue} in ${opts.repo} is a pull request, not an issue.`);
   if (typeof data.title !== 'string') throw new Error(`Unexpected response reading ${opts.repo}#${opts.issue}.`);
-  return { title: data.title, body: typeof data.body === 'string' ? data.body : '' };
+  return { title: data.title, body: typeof data.body === 'string' ? data.body : '', ...(typeof data.updated_at === 'string' ? { updatedAt: data.updated_at } : {}) };
 }
 
 const CLOSING = /(?<![\w/#-])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d{1,9})(?!\d)/gi;

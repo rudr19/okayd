@@ -128,8 +128,12 @@ test('member upgrades to Pro [okproof:142.1] [okproof:142.2]', async ({ page }) 
 });
 ```
 
-Ids are positional by default. To keep a tag valid when criteria are reordered,
-give a criterion a stable id with a `{#id}` prefix; see [docs/stable-ids.md](docs/stable-ids.md).
+**Use stable ids for anything that will live longer than one pull request.** Ids are
+positional by default (`142.3` is the third line), so deleting or inserting a line above a
+criterion re-points every tag below it at a different requirement, and the tests keep
+passing. Give each criterion a stable id with a `{#id}` prefix, for example
+`- [ ] {#sign-in} A user can sign in`, and tag tests `[okproof:142.sign-in]`. A stable id
+does not move when lines are added, removed or reordered. See [docs/stable-ids.md](docs/stable-ids.md).
 
 ## 3. Build the ledger
 
@@ -527,7 +531,9 @@ This writes `.okproof/142.md` (or the `[dir]` you pass; it must be inside the cu
 - Ids are positional (`142.<n>`), so removing a middle criterion renumbers the later ones. okproof prints a warning listing `[okproof:142.3] -> [okproof:142.2]` so you can re-tag those tests.
 - The file is rewritten from the issue, so hand-added notes in it are lost. An edited checkbox counts as one removed and one added.
 - With `--body-file` the title comes from `--title`, else the first heading that is not "Acceptance criteria", else the file's current title.
-- `--check` fails with "proof file is out of date with issue #n; run okproof sync".
+- `--check` fails with "proof file is out of date with issue #n; run okproof sync", and says why: the issue changed since the last sync, the proof file was edited locally, both, or (for a file written before this existed) that it cannot tell.
+- **Provenance.** `sync` writes one comment line under the heading, `<!-- okproof:issue updated_at=... sha256=... proof_sha256=... -->`. `sha256` is a digest of the issue's title and criteria at the sync, `proof_sha256` a digest of the proof file itself, and `updated_at` is the issue's timestamp for people to read. `--check` compares the recorded digests with the issue and the file, so it can tell "the issue changed" from "someone edited the proof file". `updated_at` is never compared (labels and comments change it). Files without the line behave as before; the next `sync` adds it, keeping any notes in a file that is already in step. Not built yet: `sync --push` (writing criteria back to the issue; it would need `issues: write`) and a text hash in the tag (`[okproof:142.3#a1b2]`).
+- A `--results` gate rebuilds its ledger from this job's tests, so it cannot see that a positional id was re-pointed since the tests were tagged. Where a committed ledger exists, the gate fails it as STALE (naming the edited ids). Stable ids avoid the problem.
 
 In the Action, `sync: check` (the default) does this on every run. It uses the `issue` input, or else the issues the PR body closes ("Closes #N", "Fixes #N", "Resolves #N" in the same repo, ignoring code blocks and HTML comments) that already have a proof file in `dir`. `sync: write` only rewrites the files in the workspace; committing them is up to your workflow. `sync: off` skips it.
 

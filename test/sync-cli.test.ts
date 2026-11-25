@@ -4,6 +4,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { withoutMarker } from '../src/provenance.js';
 import { fileURLToPath } from 'node:url';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
@@ -20,7 +21,7 @@ test('sync --body-file writes the proof file, titled from the first heading', as
   const r = run('--issue', '12', '--body-file', 'issue.md');
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /#12: proof file created/);
-  assert.equal(await readFile(join(cwd, '.okproof', '12.md'), 'utf8'), '## #12 Pro upgrade\n- [ ] one\n- [ ] two\n');
+  assert.equal(withoutMarker(await readFile(join(cwd, '.okproof', '12.md'), 'utf8')), '## #12 Pro upgrade\n- [ ] one\n- [ ] two\n');
   const again = run('--issue', '12', '--body-file', 'issue.md', '--check');
   assert.equal(again.status, 0, again.stderr);
   assert.match(again.stdout, /in sync/);
@@ -33,7 +34,7 @@ test('sync --check exits 1 on drift, changes nothing, and says how to fix it', a
   const r = run('--issue', '3', '--body-file', 'issue.md', '--check');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /proof file is out of date with issue #3; run okproof sync/);
-  assert.equal(await readFile(join(cwd, '.okproof', '3.md'), 'utf8'), '## #3 T\n- [ ] one\n- [ ] two\n');
+  assert.equal(withoutMarker(await readFile(join(cwd, '.okproof', '3.md'), 'utf8')), '## #3 T\n- [ ] one\n- [ ] two\n');
   // Missing file also counts as drift in check mode.
   assert.equal(run('--issue', '4', '--body-file', 'issue.md', '--check').status, 1);
 });

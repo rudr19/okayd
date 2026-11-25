@@ -1,5 +1,12 @@
 # Stable criterion ids
 
+**Recommended for every proof file that outlives one pull request.** A positional id is only
+the line's position, so editing the list above it re-points your tags at different
+criteria without any test failing. A stable id is part of the criterion, not of its position.
+Without stable ids, `okproof sync` warns when it renumbers (`[okproof:142.3] -> [okproof:142.2]`),
+and the gate marks a committed ledger STALE when the text under an id changed; neither
+can see a re-pointing when a gate rebuilds its ledger from this run's tests alone.
+
 By default a criterion's id is its position: the third `- [ ]` line of
 `.okproof/142.md` is `142.3`. Insert or remove a line above it and every later id
 shifts, so tests tagged with the old id silently claim the wrong criterion.
