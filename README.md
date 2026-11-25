@@ -7,6 +7,10 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rudr19/okproof/badge)](https://scorecard.dev/viewer/?uri=github.com/rudr19/okproof)
 [![npm version](https://img.shields.io/npm/v/okproof.svg)](https://www.npmjs.com/package/okproof)
 [![License](https://img.shields.io/github/license/rudr19/okproof.svg)](LICENSE)
+[![npm downloads/week](https://img.shields.io/npm/dw/okproof)](https://www.npmjs.com/package/okproof)
+[![npm downloads total](https://img.shields.io/npm/dt/okproof)](https://npm-stat.com/charts.html?package=okproof)
+[![GitHub release downloads](https://img.shields.io/github/downloads/rudr19/okproof/total)](https://github.com/rudr19/okproof/releases)
+[![GitHub stars](https://img.shields.io/github/stars/rudr19/okproof?style=social)](https://github.com/rudr19/okproof)
 
 > Browser agents act. Test frameworks run. CI reports. **okproof proves.**
 > [Why okproof](WHY.md) · [Project](#project) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
