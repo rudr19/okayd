@@ -10,7 +10,7 @@ const dir = process.env.DIR || '.okproof';
 let proven = false;
 const lines = [];
 try {
-  const result = await evaluateGate(dir);
+  const result = await evaluateGate(dir, { allowEmpty: process.env.OKPROOF_ALLOW_EMPTY === '1' });
   proven = result.ok;
   lines.push(...result.notes.map((n) => `okproof ${n}`), ...result.problems.map((p) => `okproof not proven: ${p}`));
   if (lines.length === 0) lines.push(proven ? 'okproof: proven' : 'okproof: not proven');

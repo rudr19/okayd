@@ -64,6 +64,13 @@ for (let i = 0; i < argv.length; i++) {
   else if (argv[i].startsWith('--format=')) format = argv[i].slice('--format='.length);
   else args.push(argv[i]);
 }
+// The GitHub Action sets these once (scripts/action-options.mjs); a command-line flag wins.
+if (process.env.OKPROOF_STRICT_RELEVANCE === '1') strictRelevance = true;
+if (maxClaims === undefined && /^[1-9]\d{0,5}$/.test(process.env.OKPROOF_MAX_CLAIMS ?? '')) maxClaims = Number(process.env.OKPROOF_MAX_CLAIMS);
+if (lintFlag === undefined) {
+  const fromEnv = process.env.OKPROOF_LINT;
+  if (fromEnv !== undefined && fromEnv !== '' && fromEnv !== 'off') lintFlag = fromEnv === 'auto' ? true : fromEnv;
+}
 
 // okproof verify --url <baseUrl> [--issue N] [--dir .okproof] [--max-steps 15] [--model id] [--effort e] [--replay-only]
 function flags(argv: string[]): Map<string, string | true> {

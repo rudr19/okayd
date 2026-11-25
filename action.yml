@@ -7,9 +7,13 @@ branding:
 
 inputs:
   results:
-    description: Path to a JUnit XML file from your test run. Optional if ledgers were already written by the okproof reporter.
+    description: Path to a JUnit XML or CTRF JSON file from your test run in this job. Required unless allow-committed-ledgers is true: without it the gate would trust committed ledger files, which anyone who can commit can forge.
     required: false
     default: ''
+  allow-committed-ledgers:
+    description: 'Let the gate run without a results input and trust the ledger files already committed in the proof folder. "true" or "false". Off by default because a committed ledger can be written by hand.'
+    required: false
+    default: 'false'
   dir:
     description: Folder holding the proof files and ledgers.
     required: false
@@ -34,16 +38,40 @@ inputs:
     description: 'Fail the gate when a linked issue ("Closes #N" in the PR body, or the issue input) has no proof file named for it. "true" or "false". Set false only if your PRs close issues okproof does not track.'
     required: false
     default: 'true'
+  require-linked-proof:
+    description: 'Fail when the pull request adds or changes a proof file whose issue is not linked in the PR body ("Closes #N"). "true" or "false". Empty (default) follows require-linked. A changed, unlinked proof file always produces a warning.'
+    required: false
+    default: ''
+  require-verify:
+    description: 'Fail the gate for every proof file unless verify-<issue>.json exists (the okproof verify output). "true" or "false". A "{verify}" flag in a proof file heading does the same for that file.'
+    required: false
+    default: 'false'
+  allow-empty:
+    description: 'Pass when the pull request has no proof files at all. "true" or "false". Use this for a required check that runs on every PR: do not filter the workflow with on.pull_request.paths, because a skipped required check blocks the merge. Linked issues still need their proof file (require-linked).'
+    required: false
+    default: 'false'
   lint:
-    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
+    description: 'Run okproof lint over your test files and count a test lint finds weak (no assertion, or only trivial ones) as asserting nothing, so its criterion is unproven; a real assertion lint finds replaces an unknown assertion count. Needed because some runners (JUnit from node:test, for example) report no assertion counts. "auto" (default) scans every test file in the workspace; a path or glob (for example "tests/**/*.spec.ts") limits the scan; "off" disables it. Only used with the results input.'
     required: false
     default: auto
+  strict-assertions:
+    description: 'Treat a test whose runner reported no assertion count as weak, unless lint found a real assertion in it. "true" (default) or "false".'
+    required: false
+    default: 'true'
+  strict-relevance:
+    description: 'Fail when a tagged test never mentions its criterion, or claims more criteria than max-claims. "true" (default) or "false" (advisory only).'
+    required: false
+    default: 'true'
+  max-claims:
+    description: 'Most criteria one test may claim before lint flags it. Empty means the okproof default (3).'
+    required: false
+    default: ''
   node-version:
     description: Node.js version used to run okproof.
     required: false
     default: '22'
   github-token:
-    description: Token used to post the pull request comment. The job needs pull-requests write permission.
+    description: Token used to post the pull request comment and to list the pull request files. The job needs pull-requests write permission to comment.
     required: false
     default: ${{ github.token }}
 
@@ -61,6 +89,25 @@ runs:
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: ${{ inputs.node-version }}
+
+    # Every input is read once here and handed to the CLI as OKPROOF_* variables.
+    - name: Resolve options
+      id: options
+      shell: bash
+      env:
+        GATE: ${{ inputs.gate }}
+        RESULTS: ${{ inputs.results }}
+        ALLOW_COMMITTED: ${{ inputs.allow-committed-ledgers }}
+        STRICT_ASSERTIONS: ${{ inputs.strict-assertions }}
+        STRICT_RELEVANCE: ${{ inputs.strict-relevance }}
+        ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        REQUIRE_LINKED: ${{ inputs.require-linked }}
+        REQUIRE_LINKED_PROOF: ${{ inputs.require-linked-proof }}
+        REQUIRE_VERIFY: ${{ inputs.require-verify }}
+        LINT: ${{ inputs.lint }}
+        MAX_CLAIMS: ${{ inputs.max-claims }}
+        DIR: ${{ inputs.dir }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-options.mjs"
 
     - name: Install okproof
       shell: bash
@@ -102,30 +149,26 @@ runs:
         exit $status
 
     - name: Check proof files
+      if: steps.options.outputs.empty != 'true'
       shell: bash
       env:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/dist/src/cli.js" check "$DIR"
 
-    - name: Build ledgers from JUnit XML
+    # The lint, strict-assertions, strict-relevance and max-claims settings reach the CLI as OKPROOF_* variables.
+    - name: Build ledgers from test results
+      if: steps.options.outputs.empty != 'true'
       shell: bash
       env:
         RESULTS: ${{ inputs.results }}
         DIR: ${{ inputs.dir }}
-        LINT: ${{ inputs.lint }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
         OKPROOF_NO_COMMENT: ${{ inputs.comment == 'true' && '0' || '1' }}
       run: |
-        lint=()
-        case "$LINT" in
-          off) ;;
-          ''|auto) lint=(--lint=) ;;
-          *) lint=("--lint=$LINT") ;;
-        esac
         if [ -n "$RESULTS" ]; then
-          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR" "${lint[@]}"
+          node "$GITHUB_ACTION_PATH/dist/src/cli.js" ingest "$RESULTS" "$DIR"
         else
-          echo "No results input; using ledgers already in $DIR."
+          echo "No results input; using ledgers already in $DIR (allow-committed-ledgers)."
         fi
 
     - name: Set outputs
@@ -135,6 +178,14 @@ runs:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/scripts/action-outputs.mjs"
 
+    - name: Check that changed proof files are linked
+      shell: bash
+      env:
+        DIR: ${{ inputs.dir }}
+        ISSUE: ${{ inputs.issue }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-proof-links.mjs"
+
     - name: Gate
       shell: bash
       env:
@@ -142,23 +193,18 @@ runs:
         DIR: ${{ inputs.dir }}
         RESULTS: ${{ inputs.results }}
         REQUIRED: ${{ steps.issues.outputs.required }}
-        LINT: ${{ inputs.lint }}
       run: |
-        lint=()
-        case "$LINT" in
-          off) ;;
-          ''|auto) lint=(--lint=) ;;
-          *) lint=("--lint=$LINT") ;;
-        esac
         # Gate from the results ingested in THIS job, never from a committed ledger.
         # Every issue the PR links must have its own proof file.
         if [ "$GATE" = "true" ]; then
           extra=()
           [ -n "$REQUIRED" ] && extra+=(--require-issues "$REQUIRED")
+          [ "$OKPROOF_ALLOW_EMPTY" = "1" ] && extra+=(--allow-empty)
+          [ "$OKPROOF_REQUIRE_VERIFY" = "1" ] && extra+=(--require-verify)
           if [ -n "$RESULTS" ]; then
-            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "${lint[@]}" "$DIR"
+            node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate --results "$RESULTS" "${extra[@]}" "$DIR"
           else
-            echo "::warning::okproof: No results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
+            echo "::warning::okproof: allow-committed-ledgers is on and no results input was given, so the ledger is not bound to a test run in this job. The gate is trusting committed ledger files, which anyone who can commit can forge. Set the results input to your JUnit or CTRF file."
             node "$GITHUB_ACTION_PATH/dist/src/cli.js" gate "${extra[@]}" "$DIR"
           fi
         fi
