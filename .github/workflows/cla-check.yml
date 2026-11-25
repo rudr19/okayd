@@ -1,0 +1,41 @@
+name: CLA check
+
+# Read-only: lists the PR's comments and fails the job when a first-time contributor has not
+# posted the CLA sentence. It does not comment (that would need a write token), and it uses
+# pull_request, never pull_request_target, so fork code never runs with a write token or secrets.
+# A comment does not retrigger a pull_request workflow: after commenting, re-run this check
+# (Actions tab, Re-run jobs). See scripts/cla-check.mjs for who is checked and the limits.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Look up the pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$NUMBER" --jq '"author=\(.user.login)\nassociation=\(.author_association)\ntype=\(.user.type)"' >> "$GITHUB_OUTPUT"
+      - name: First-time contributors have signed the CLA
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ steps.pr.outputs.author }}
+          AUTHOR_ASSOCIATION: ${{ steps.pr.outputs.association }}
+          AUTHOR_TYPE: ${{ steps.pr.outputs.type }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/cla-check.mjs

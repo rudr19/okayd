@@ -18,7 +18,10 @@ Every contributor signs the [CLA](CLA.md) once. Comment on your first pull reque
 
 > I have read the okproof CLA and I agree to it.
 
-Pull requests without a signed CLA can't be merged.
+The CLA check on your pull request fails until the sentence is there; a comment does
+not retrigger it, so re-run the check afterwards. Pull requests without a signed CLA
+can't be merged. (The CLA text is a draft awaiting lawyer review; see the note in
+[CLA.md](CLA.md).)
 
 ## Development
 
