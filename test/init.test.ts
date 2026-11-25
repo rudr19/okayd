@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runInit, AGENT_MARKER, AGENT_SNIPPET, RUNNERS } from '../src/init.js';
 import { parseProof } from '../src/proof.js';
+import { packageVersion } from '../src/release-info.js';
 
 const cli = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 const tmp = () => mkdtemp(join(tmpdir(), 'okproof-init-'));
@@ -88,10 +89,11 @@ test('--agents creates AGENTS.md, CLAUDE.md, the skill and .mcp.json', async () 
     const text = await read(cwd, f);
     assert.ok(text.includes(AGENT_MARKER));
     assert.ok(text.includes('[okproof:<id>]'));
-    assert.ok(text.includes('npx okproof gate'));
+    assert.ok(text.includes(`npx okproof@${packageVersion()} gate`), 'snippet must name the exact version');
+    assert.ok(!/npx okproof (gate|ingest)/.test(text), 'no unpinned npx okproof in the snippet');
   }
   assert.equal(await read(cwd, '.claude/skills/okproof/SKILL.md'), await readFile(fileURLToPath(new URL('../../skills/okproof/SKILL.md', import.meta.url)), 'utf8'));
-  assert.deepEqual(JSON.parse(await read(cwd, '.mcp.json')), { mcpServers: { okproof: { command: 'npx', args: ['okproof', 'mcp'] } } });
+  assert.deepEqual(JSON.parse(await read(cwd, '.mcp.json')), { mcpServers: { okproof: { command: 'npx', args: ['-y', `okproof@${packageVersion()}`, 'mcp'] } } });
 });
 
 test('--agents appends to existing AGENTS.md/CLAUDE.md once (idempotent)', async () => {
@@ -115,7 +117,7 @@ test('.mcp.json merge keeps other servers and other keys', async () => {
   const json = JSON.parse(await read(cwd, '.mcp.json'));
   assert.equal(json.other, 1);
   assert.deepEqual(json.mcpServers.github, { command: 'gh-mcp' });
-  assert.deepEqual(json.mcpServers.okproof, { command: 'npx', args: ['okproof', 'mcp'] });
+  assert.deepEqual(json.mcpServers.okproof, { command: 'npx', args: ['-y', `okproof@${packageVersion()}`, 'mcp'] });
 });
 
 test('.mcp.json: existing okproof entry and invalid JSON are left alone', async () => {

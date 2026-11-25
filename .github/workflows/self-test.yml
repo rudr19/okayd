@@ -16,6 +16,8 @@ jobs:
       - uses: ./
         id: okproof
         with:
+          # This ref is not a release, so build from source (consumers get the published package).
+          runtime: source
           results: examples/action-fixture/junit.xml
           dir: examples/action-fixture/.okproof
           comment: 'false'

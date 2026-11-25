@@ -60,10 +60,17 @@ without provenance.
    moves `v0` only for tags that match `v0.X.Y`.
 7. Approve the `npm` environment deployment when GitHub asks. The workflow then:
    - fails fast if the tag differs from `package.json`'s version;
+   - stamps the released commit into `src/release-info.ts` (`scripts/stamp-release.mjs`), so the
+     published package can write `uses: rudr19/okproof@<sha> # vX.Y.Z` from `okproof init --workflow`;
    - runs `npm ci --ignore-scripts` and `npm test`;
    - packs, attests the tarball (`actions/attest-build-provenance`), and runs
      `npm publish --provenance --access public`;
    - moves `v0` to the released commit.
+
+   The Action's default runtime installs and verifies the published package of the exact version
+   in `package.json` at the pinned commit, so a tag is only usable by consumers after step 7's
+   publish has finished. Do not point `v0` (or tell anyone to pin) at a commit whose version is
+   not on npm.
 
 ## Verify the release
 

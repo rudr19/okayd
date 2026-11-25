@@ -42,8 +42,8 @@ npx okproof init --agents --workflow --runner playwright
 That one command, in your repo:
 
 - creates `.okproof/` with an example proof file (use `--issue 142 --title "Pro upgrade"` for a real one);
-- writes `.github/workflows/okproof.yml`: it runs your tests with a JUnit reporter, then `rudr19/okproof@v0` ingests the results and gates the merge (`--runner` is one of `playwright`, `junit`, `ctrf`, `vitest`, `jest`, `pytest`);
-- teaches coding agents the loop: it adds an okproof section to `AGENTS.md` and `CLAUDE.md`, copies the skill to `.claude/skills/okproof/SKILL.md`, and adds the okproof server to `.mcp.json` without touching your other servers.
+- writes `.github/workflows/okproof.yml`: it runs your tests with a JUnit reporter, then `rudr19/okproof` ingests the results and gates the merge (`--runner` is one of `playwright`, `junit`, `ctrf`, `vitest`, `jest`, `pytest`). In a published release the Action is pinned to the release's full commit SHA with the version in a comment; a build that does not know its commit writes `@v0` plus a comment telling you to pin (see [Pin the Action by commit SHA](#pin-the-action-by-commit-sha));
+- teaches coding agents the loop: it adds an okproof section to `AGENTS.md` and `CLAUDE.md`, copies the skill to `.claude/skills/okproof/SKILL.md`, and adds the okproof server to `.mcp.json` without touching your other servers. Everything `init` writes that runs okproof names the exact version (`npx -y okproof@<version> mcp`, `npx okproof@<version> gate`), so an agent session never runs whatever the registry serves that day.
 
 Then edit the proof file, tag your tests with `[okproof:<id>]`, and push. The
 pull request gets one okproof comment, and the check fails until every criterion
@@ -583,8 +583,45 @@ Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as
 `OKPROOF_NO_COMMENT=1`.
 
-Releases are tagged `v0.x`, and a moving `v0` tag points at the latest one.
-Pin `@v0` to follow it, or a full `v0.x.y` tag to hold still.
+### Pin the Action by commit SHA
+
+Releases are tagged `v0.x.y`, and a moving `v0` tag points at the latest one.
+**Tags are mutable**: `v0` is moved on every release, and a `v0.x.y` tag can be
+re-pointed by anyone who can push tags. A full commit SHA cannot. Pin the Action
+the way you pin your other third-party actions:
+
+```yaml
+      - uses: rudr19/okproof@<full 40-character commit sha> # v0.3.0
+```
+
+`okproof init --workflow` does this for you in a published release (the release
+workflow stamps its own commit into the package). A build that does not know its
+commit writes `@v0` plus a comment asking you to pin, never a made-up SHA. Let
+Dependabot (`package-ecosystem: github-actions`) propose the next SHA.
+
+### What runs: the published, attested package
+
+By default (`runtime: published`) the Action does not build okproof from source on
+your runner. It reads its own version from the `package.json` of the commit you
+pinned, installs exactly that version from npm into a temporary folder (scripts
+off, registry fixed to `https://registry.npmjs.org/`), runs `npm audit signatures`
+there (the registry signature and the build-provenance attestation), and then uses
+that same verified copy. If the version is not on npm, or the check fails, or npm
+is unreachable, the job fails: it never falls back to a source build. There is no
+`npm ci` of dev dependencies and no compile step on your runner.
+
+Set `runtime: source` only for a ref that is not a release (a fork, a branch under
+test, this repository's own self-test); it runs `npm ci` and `tsc` as before.
+
+### Fork pull requests
+
+Use the `pull_request` trigger. On a pull request from a fork GitHub gives the job a
+read-only token and no secrets: the gate still runs and still fails the check, and
+okproof skips the PR comment (it writes the job summary instead). **Never switch the
+workflow to `pull_request_target` to get comments on fork PRs.** That trigger runs
+with a write token and secrets while your job checks out and runs the fork's code,
+which is how repositories get taken over. Nothing in okproof needs it; to see the
+ledger on a fork PR, read the job summary or download the ledger artifact.
 
 ## Browser driver
 
@@ -753,7 +790,7 @@ Cursor and Codex can check the definition of done before they claim a task is
 finished. For Claude Code, add this to `.mcp.json`:
 
 ```json
-{ "mcpServers": { "okproof": { "command": "npx", "args": ["okproof", "mcp"] } } }
+{ "mcpServers": { "okproof": { "command": "npx", "args": ["-y", "okproof@0.3.0", "mcp"] } } }
 ```
 
 Tools (all take an optional `dir`, default `.okproof`, which must stay inside the
@@ -780,8 +817,8 @@ This repo checks work against acceptance criteria in `.okproof/<issue>.md`.
 1. Read `.okproof/<issue>.md` before you start. Each criterion has an id such as `142.1`.
 2. Tag every test that covers a criterion with `[okproof:<id>]` in its title, for example
    `test('member can upgrade [okproof:142.1]', ...)`.
-3. Run the tests, then `npx okproof ingest <results>` (JUnit XML or CTRF JSON) and
-   `npx okproof gate` (or call the MCP tool `okproof_status`). Keep working until it says proven.
+3. Run the tests, then `npx okproof@0.3.0 ingest <results>` (JUnit XML or CTRF JSON) and
+   `npx okproof@0.3.0 gate` (or call the MCP tool `okproof_status`). Keep working until it says proven.
 4. Never edit or remove existing criteria without telling the user exactly what you changed and why.
 5. Add a real assertion to every tagged test. Untested, flaky and assertion-less tests never count.
 ```

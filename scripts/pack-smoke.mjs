@@ -108,6 +108,21 @@ try {
   expect('okproof ingest (all passing)', cliRun('ingest', 'all.xml'), 0);
   expect('okproof gate with every criterion met', cliRun('gate'), 0);
 
+  // The Action's helper scripts import ../dist/src/*. On consumer runs that dist is the published
+  // package's, so run them against the extracted tarball (this is the offline proof for runtime: published).
+  mkdirSync(join(pkgDir, 'scripts'));
+  for (const name of ['action-outputs.mjs', 'action-linked-issues.mjs', 'action-proof-links.mjs']) {
+    writeFileSync(join(pkgDir, 'scripts', name), readFileSync(join(root, 'scripts', name), 'utf8'));
+  }
+  const outputs = run(process.execPath, [join(pkgDir, 'scripts', 'action-outputs.mjs')], { cwd: project, env: { ...env, DIR: '.okproof' } });
+  if (outputs.status !== 0 || !outputs.stdout.includes('proven=true')) fail(`action-outputs.mjs against the packed dist: expected proven=true
+${outputs.stdout}${outputs.stderr}`);
+  else ok('action-outputs.mjs runs against the packed dist (proven=true)');
+  const linked = run(process.execPath, [join(pkgDir, 'scripts', 'action-linked-issues.mjs')], { cwd: project, env: { ...env, SYNC: 'off', DIR: '.okproof' } });
+  if (linked.status !== 0) fail(`action-linked-issues.mjs against the packed dist exited ${linked.status}
+${linked.stdout}${linked.stderr}`);
+  else ok('action-linked-issues.mjs runs against the packed dist');
+
   // A proof file edited after the ledger was written must not pass.
   writeFileSync(join(project, '.okproof', '1.md'), '## #1 Smoke test\n- [ ] A visitor can sign in\n- [ ] A visitor can sign out\n- [ ] A visitor can reset a password\n');
   expect('okproof gate with a stale ledger', cliRun('gate'), 1, 'STALE');

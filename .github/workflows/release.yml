@@ -36,6 +36,12 @@ jobs:
             echo "::error::Release tag v$tag does not match package.json version $version"
             exit 1
           fi
+      # Writes this commit into src/release-info.ts (before the build), so the published
+      # package can print `uses: rudr19/okproof@<this sha> # vX.Y.Z` from `okproof init --workflow`.
+      - name: Stamp the release commit into the build
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: node scripts/stamp-release.mjs
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm pack

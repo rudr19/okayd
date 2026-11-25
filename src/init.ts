@@ -3,11 +3,17 @@
 import { mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { okproofActionRef, packageVersion, pinnedNpx, type ActionRef } from './release-info.js';
 
 export const AGENT_MARKER = '<!-- okproof -->';
 
-/** The section appended to AGENTS.md / CLAUDE.md. Also shown in the README. */
-export const AGENT_SNIPPET = `${AGENT_MARKER}
+/**
+ * The section appended to AGENTS.md / CLAUDE.md. Also shown in the README. It names this exact
+ * version (npx okproof@x.y.z), so an agent never runs whatever the registry serves that day.
+ */
+export function agentSnippet(version: string = packageVersion()): string {
+  const npx = pinnedNpx(version);
+  return `${AGENT_MARKER}
 ## okproof: definition of done
 
 This repo checks work against acceptance criteria in \`.okproof/<issue>.md\`.
@@ -15,11 +21,14 @@ This repo checks work against acceptance criteria in \`.okproof/<issue>.md\`.
 1. Read \`.okproof/<issue>.md\` before you start. Each criterion has an id such as \`142.1\`.
 2. Tag every test that covers a criterion with \`[okproof:<id>]\` in its title, for example
    \`test('member can upgrade [okproof:142.1]', ...)\`.
-3. Run the tests, then \`npx okproof ingest <results>\` (JUnit XML or CTRF JSON) and
-   \`npx okproof gate\` (or call the MCP tool \`okproof_status\`). Keep working until it says proven.
+3. Run the tests, then \`${npx} ingest <results>\` (JUnit XML or CTRF JSON) and
+   \`${npx} gate\` (or call the MCP tool \`okproof_status\`). Keep working until it says proven.
 4. Never edit or remove existing criteria without telling the user exactly what you changed and why.
 5. Add a real assertion to every tagged test. Untested, flaky and assertion-less tests never count.
 `;
+}
+
+export const AGENT_SNIPPET = agentSnippet();
 
 export const RUNNERS = ['playwright', 'junit', 'ctrf', 'vitest', 'jest', 'pytest'] as const;
 export type Runner = (typeof RUNNERS)[number];
@@ -116,7 +125,7 @@ def test_does_the_thing(claim):
   }
 }
 
-export function workflowFor(runner: Runner): string {
+export function workflowFor(runner: Runner, ref: ActionRef = okproofActionRef()): string {
   let setup: string;
   let results: string;
   switch (runner) {
@@ -187,9 +196,9 @@ jobs:
         with:
           node-version: 22
 ${setup}
-      - id: okproof
+${ref.comments.map((c) => `      ${c}\n`).join('')}      - id: okproof
         if: \${{ !cancelled() }}
-        uses: rudr19/okproof@v0
+        uses: ${ref.uses}
         with:
           results: ${results}
 `;
@@ -215,7 +224,8 @@ async function appendSection(t: Tracker, cwd: string, rel: string): Promise<void
 async function mergeMcp(t: Tracker, cwd: string): Promise<void> {
   const rel = '.mcp.json';
   const abs = join(cwd, rel);
-  const server = { command: 'npx', args: ['okproof', 'mcp'] };
+  // An exact version: the agent starts this server on every session, so it must not float.
+  const server = { command: 'npx', args: ['-y', `okproof@${packageVersion()}`, 'mcp'] };
   if (!(await exists(abs))) {
     await writeFile(abs, JSON.stringify({ mcpServers: { okproof: server } }, null, 2) + '\n');
     t.created.push(rel);

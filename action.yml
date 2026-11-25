@@ -82,6 +82,10 @@ inputs:
     description: 'Most criteria one test may claim before lint flags it. Empty means the okproof default (3).'
     required: false
     default: ''
+  runtime:
+    description: 'Where the okproof build comes from. "published" (default) installs the exact version in the package.json of this action from npm and checks it with npm audit signatures, so what runs is the published, attested package; any failure stops the job. "source" runs npm ci and tsc in the action folder, for a ref that is not a release (the self-test of this repository, a fork).'
+    required: false
+    default: published
   node-version:
     description: Node.js version used to run okproof.
     required: false
@@ -125,12 +129,12 @@ runs:
         DIR: ${{ inputs.dir }}
       run: node "$GITHUB_ACTION_PATH/scripts/action-options.mjs"
 
+    # Default: the published, attested package of the version of this action (see scripts/action-runtime.mjs).
     - name: Install okproof
       shell: bash
-      run: |
-        cd "$GITHUB_ACTION_PATH"
-        npm ci --ignore-scripts --no-audit --no-fund
-        npm run build
+      env:
+        RUNTIME: ${{ inputs.runtime }}
+      run: node "$GITHUB_ACTION_PATH/scripts/action-runtime.mjs"
 
     - name: Find issues to sync
       id: issues
