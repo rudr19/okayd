@@ -47,6 +47,8 @@ export interface Ledger {
   results_sha256?: string;
   /** sha256 of the proof file text the ledger was built from. */
   proof_sha256?: string;
+  /** Which run wrote the ledger: the commit it was built on (GITHUB_SHA, else git HEAD), the CI run id if any, and when. */
+  run?: { commit?: string; run_id?: string; at: string };
 }
 
 export interface LedgerOptions {

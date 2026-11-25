@@ -39,9 +39,9 @@ test('okproof_criteria lists criteria with tags', async () => {
   const cwd = await project();
   const r = await call(cwd, 'okproof_criteria');
   assert.equal(r.isError, false);
-  assert.match(r.text, /#142 Pro upgrade/);
-  assert.match(r.text, /\[okproof:142\.1\] Member can upgrade/);
-  assert.match(r.text, /\[okproof:142\.4\] Downgrade works/);
+  assert.match(r.text, /#142 "Pro upgrade"/);
+  assert.match(r.text, /\[okproof:142\.1\] "Member can upgrade"/);
+  assert.match(r.text, /\[okproof:142\.4\] "Downgrade works"/);
   await rm(cwd, { recursive: true, force: true });
 });
 

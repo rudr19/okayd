@@ -2,11 +2,13 @@
 // publish them. Every adapter (Playwright, JUnit, ...) ends here.
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { parseProof } from './proof.js';
 import { buildLedger, renderLedgerMarkdown, type Ledger, type TestOutcome } from './ledger.js';
 import { publishToGitHub } from './github.js';
 import { evaluateGate } from './gate.js';
 import { sha256Hex } from './trust.js';
+import { runIdentity } from './run-identity.js';
 import { applyVerifyFile, criteriaHash, readVerifyFile } from './verify/ledger.js';
 import { applyTechniques } from './techniques.js';
 import { readAdversarial, type EvidenceLevel } from './evidence.js';
@@ -52,7 +54,7 @@ export async function finalize(outcomes: TestOutcome[], options: FinalizeOptions
     const proof = parseProof(proofText);
     const adversarial = await readAdversarial(dir, proof);
     const ci = { resultsBound: options.resultsSha256 !== undefined, proofMatchesBase: options.proofMatchesBase === true };
-    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: strict, minLevel: options.minLevel, adversarial, ci }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText) };
+    let ledger: Ledger = { ...buildLedger(proof, outcomes, { strictAssertions: strict, minLevel: options.minLevel, adversarial, ci }), ...(options.resultsSha256 ? { results_sha256: options.resultsSha256 } : {}), proof_sha256: sha256Hex(proofText), run: runIdentity() };
     // A criterion the verifier refuted (and replay confirmed) fails regardless of tests.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified && verified.criteriaHash === criteriaHash(proof)) ledger = applyVerifyFile(ledger, verified);

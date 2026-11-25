@@ -18,6 +18,8 @@ type Id = string | number | null;
 export interface Protocol {
   /** Handle one input line. Resolves once any reply has been written. */
   handleLine(line: string): Promise<void>;
+  /** Answer a line that was dropped before it reached handleLine (too long). */
+  rejectLine(message: string): Promise<void>;
 }
 
 export function createProtocol(options: ProtocolOptions): Protocol {
@@ -25,6 +27,7 @@ export function createProtocol(options: ProtocolOptions): Protocol {
   const cwd = options.cwd ?? process.cwd();
   const version = options.version ?? '0.0.0';
   const log = options.log ?? (() => {});
+  const state = { adds: 0 };
 
   const send = async (msg: object) => {
     await options.write(JSON.stringify(msg));
@@ -55,7 +58,7 @@ export function createProtocol(options: ProtocolOptions): Protocol {
         if (typeof args !== 'object' || args === null || Array.isArray(args)) {
           return fail(id, -32602, 'params.arguments must be an object.');
         }
-        return reply(id, await runTool(tool, args as Record<string, unknown>, { cwd }));
+        return reply(id, await runTool(tool, args as Record<string, unknown>, { cwd, state }));
       }
       default:
         return fail(id, -32601, `Method not found: ${method}`);
@@ -63,6 +66,7 @@ export function createProtocol(options: ProtocolOptions): Protocol {
   }
 
   return {
+    rejectLine: (message) => fail(null, -32600, `Invalid Request: ${message}`),
     async handleLine(line) {
       const text = line.trim();
       if (text === '') return;

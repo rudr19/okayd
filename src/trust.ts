@@ -13,6 +13,7 @@ import { evaluateGate, parseIssueList, proofNameProblems, requiredIssueProblems 
 import { buildLedger, type Ledger, type TestOutcome } from './ledger.js';
 import { parseJUnit } from './junit.js';
 import { readResultsFile } from './results-file.js';
+import { runIdentity } from './run-identity.js';
 import { lintOutcomes } from './lint.js';
 import { parseProof } from './proof.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
@@ -80,7 +81,7 @@ export async function ledgersFromResults(
       adversarial: await readAdversarial(dir, proof),
       ci: { resultsBound: true, proofMatchesBase: opts.proofMatchesBase === true },
     });
-    let ledger: Ledger = { ...built, results_sha256, proof_sha256: sha256Hex(source) };
+    let ledger: Ledger = { ...built, results_sha256, proof_sha256: sha256Hex(source), run: runIdentity() };
     // A confirmed verifier refutation can only make a criterion fail, never pass.
     const verified = await readVerifyFile(dir, ledger.issue);
     if (verified) ledger = applyVerifyFile(ledger, verified);
