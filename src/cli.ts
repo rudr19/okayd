@@ -30,8 +30,10 @@ import { parseHeader, prepareAuth, type AuthOptions } from './verify/auth.js';
 import { startMcpServer } from './mcp/server.js';
 import { lintOutcomes, lintTests } from './lint.js';
 import { runInit, RUNNERS, type Runner } from './init.js';
+import { repoFromRemote, runDoctor } from './doctor.js';
+import { spawnSync } from 'node:child_process';
 
-const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [--max-claims N] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof mcp | okproof verify --url <baseUrl> [options]';
+const USAGE = 'Usage: okproof check [dir] [--issue-body <file> [--issue N]] | okproof sync --issue <n> [--repo owner/name] [--body-file f] [--title t] [--check] [dir] | okproof ingest <junit.xml|ctrf.json> [dir] [--format junit|ctrf] [--lint [path|glob]] | okproof gate [dir] [--results <junit.xml|ctrf.json> [--format junit|ctrf]] [--require-issues 142,143] [--allow-empty] [--lint [path|glob]] | okproof lint [--tests <path|glob>] [--strict-relevance] [--max-claims N] [dir] | okproof init [--issue N --title T] [--runner playwright|junit|ctrf|vitest|jest|pytest] [--agents] [--workflow] [--yes] | okproof doctor [--repo owner/name] [--dir .okproof] [--check <job name>] [--no-network] | okproof mcp | okproof verify --url <baseUrl> [options]';
 const argv = process.argv.slice(2);
 const lintRequest = (): LintRequest | undefined => (lintFlag === undefined ? undefined : { ...(typeof lintFlag === 'string' ? { tests: lintFlag } : tests !== undefined ? { tests } : {}), strictRelevance, ...(maxClaims !== undefined ? { maxClaims } : {}) });
 let format: string | undefined;
@@ -269,6 +271,26 @@ async function runInitCmd(): Promise<number> {
     return 2;
   }
 }
+/** okproof doctor: read-only checks of CODEOWNERS, branch protection, .gitignore and workflows. */
+async function runDoctorCmd(): Promise<number> {
+  const f = flags(args.slice(1));
+  const str = (k: string): string | undefined => (typeof f.get(k) === 'string' ? (f.get(k) as string) : undefined);
+  let repo = str('repo');
+  if (repo === undefined && f.get('no-network') !== true) {
+    const r = spawnSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' });
+    if (r.status === 0) repo = repoFromRemote(r.stdout);
+  }
+  const result = await runDoctor({
+    cwd: process.cwd(),
+    dir: str('dir'),
+    check: str('check'),
+    repo: f.get('no-network') === true ? undefined : repo,
+    token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
+    apiUrl: process.env.GITHUB_API_URL,
+  });
+  for (const l of result.lines) console.log(l);
+  return result.ok ? 0 : 1;
+}
 const cmd = args[0] ?? 'check';
 
 async function main(): Promise<number> {
@@ -351,6 +373,7 @@ async function main(): Promise<number> {
   }
   if (cmd === 'verify') return runVerify();
   if (cmd === 'init') return runInitCmd();
+  if (cmd === 'doctor') return runDoctorCmd();
   console.error(`Unknown command "${cmd}". ${USAGE}`);
   return 2;
 }
