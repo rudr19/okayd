@@ -464,7 +464,7 @@ test('action.yml: differential and test-command reach the diff step only through
   const yml = (await readFile(fileURLToPath(new URL('../../action.yml', import.meta.url)), 'utf8')).replace(/\r\n/g, '\n');
   assert.match(yml, /\n {2}differential:\n[\s\S]*?default: 'off'/);
   assert.match(yml, /\n {2}test-command:\n/);
-  const step = yml.slice(yml.indexOf('- name: Differential proof'), yml.indexOf('- name: Build ledgers from JUnit XML'));
+  const step = yml.slice(yml.indexOf('- name: Differential proof'), yml.indexOf('- name: Build ledgers from test results'));
   assert.match(step, /TEST_COMMAND: \$\{\{ inputs\.test-command \}\}/);
   assert.match(step, /--test "\$TEST_COMMAND"/);
   const run = step.slice(step.indexOf('run: |'));

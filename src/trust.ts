@@ -12,6 +12,7 @@ import { parseCTRF } from './ctrf.js';
 import { evaluateGate } from './gate.js';
 import { buildLedger, type Ledger, type TestOutcome } from './ledger.js';
 import { parseJUnit } from './junit.js';
+import { readResultsFile } from './results-file.js';
 import { lintOutcomes } from './lint.js';
 import { parseProof } from './proof.js';
 import { applyVerifyFile, readVerifyFile } from './verify/ledger.js';
@@ -24,6 +25,8 @@ export interface LintRequest {
   /** Path or glob limiting the scan. Absent: every test file under the working directory. */
   tests?: string;
   strictRelevance?: boolean;
+  /** Flag a test claiming more criteria than this. Default 3. */
+  maxClaims?: number;
 }
 
 export const sha256Hex = (text: string): string => createHash('sha256').update(text).digest('hex');
@@ -52,13 +55,13 @@ export async function ledgersFromResults(
   resultsFile: string,
   opts: { format?: string; strictAssertions?: boolean; lint?: LintRequest; report?: (line: string) => void; minLevel?: EvidenceLevel; proofMatchesBase?: boolean } = {},
 ): Promise<Ledger[]> {
-  const text = await readFile(resultsFile, 'utf8');
+  const text = await readResultsFile(resultsFile);
   let outcomes = parseResults(text, resultsFile, opts.format);
   if (opts.lint) {
-    const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance });
+    const l = await lintOutcomes(outcomes, { dir: '.', tests: opts.lint.tests, proofDir: dir, strictRelevance: opts.lint.strictRelevance, maxClaims: opts.lint.maxClaims });
     outcomes = l.outcomes;
     for (const line of l.lines) opts.report?.(line);
-    if (!l.ok) throw new Error('okproof lint: a tagged test is possibly unrelated to its criterion (--strict-relevance).');
+    if (!l.ok) throw new Error('okproof lint: a tagged test is possibly unrelated to its criterion, or claims too many criteria (--strict-relevance).');
   }
   const results_sha256 = sha256Hex(text);
   const ledgers: Ledger[] = [];
@@ -151,11 +154,12 @@ export interface GateArgs {
   allowEmpty: boolean;
   allowPreexisting: boolean;
   allowUncovered: boolean;
+  requireVerify: boolean;
 }
 
 /** Parses the arguments after `okproof gate`. `--format` is handled by the caller. */
 export function parseGateArgs(list: string[]): GateArgs {
-  const out: GateArgs = { dir: '.okproof', requireIssues: [], allowEmpty: false, allowPreexisting: false, allowUncovered: false };
+  const out: GateArgs = { dir: '.okproof', requireIssues: [], allowEmpty: false, allowPreexisting: false, allowUncovered: false, requireVerify: false };
   let dirSet = false;
   const need = (flag: string, v: string | undefined): string => {
     if (v === undefined || v.startsWith('--')) throw new Error(`${flag} needs a value.`);
@@ -166,6 +170,7 @@ export function parseGateArgs(list: string[]): GateArgs {
     if (a === '--allow-empty') out.allowEmpty = true;
     else if (a === '--allow-preexisting') out.allowPreexisting = true;
     else if (a === '--allow-uncovered') out.allowUncovered = true;
+    else if (a === '--require-verify') out.requireVerify = true;
     else if (a === '--results') out.results = need(a, list[++i]);
     else if (a.startsWith('--results=')) out.results = a.slice('--results='.length);
     else if (a === '--require-issues') out.requireIssues.push(...parseIssueList(need(a, list[++i])));
@@ -205,7 +210,7 @@ export async function runGate(list: string[], opts: { format?: string; strictAss
       return 2;
     }
   }
-  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, ledgers, allowPreexisting: a.allowPreexisting, allowUncovered: a.allowUncovered, minLevel: opts.minLevel });
+  const result = await evaluateGate(a.dir, { allowEmpty: a.allowEmpty, requireVerify: a.requireVerify, ledgers, allowPreexisting: a.allowPreexisting, allowUncovered: a.allowUncovered, minLevel: opts.minLevel });
   const extra = [...(await proofNameProblems(a.dir)), ...(await requiredIssueProblems(a.dir, a.requireIssues))];
   for (const n of result.notes) console.log(n);
   if (a.results === undefined) for (const w of await unboundLedgerWarnings(a.dir)) console.error(w);

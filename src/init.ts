@@ -77,16 +77,43 @@ export function exampleProof(issue?: string, title?: string): { name: string; co
     const t = title?.trim() || `Issue #${issue}`;
     return {
       name: `${issue}.md`,
-      content: `## #${issue} ${t}\n- [ ] Replace this with the first acceptance criterion (or run: npx okproof sync --issue ${issue})\n`,
+      content: `## #${issue} ${t} {placeholder}\n- [ ] Replace this with the first acceptance criterion (or run: npx okproof sync --issue ${issue})\n`,
     };
   }
   return {
     name: '1.md',
     content:
-      '## #1 Example: replace with your own acceptance criteria\n' +
+      '## #1 Example: replace with your own acceptance criteria {placeholder}\n' +
       '- [ ] A user can do the first thing the issue asks for\n' +
       '- [ ] The second thing the issue asks for works and is visible in the UI\n',
   };
+}
+
+/**
+ * How a test claims a criterion, written the way this runner puts it in its report.
+ * `snippet` is copy-paste source; `reportedName` is the test name the runner writes
+ * into JUnit/CTRF (what okproof matches the tag against).
+ */
+export function tagExample(runner: Runner, id: string): { snippet: string; reportedName: string } {
+  const tag = `[okproof:${id}]`;
+  switch (runner) {
+    case 'pytest':
+      return {
+        snippet: `@pytest.mark.parametrize("claim", ["${tag}"])
+def test_does_the_thing(claim):
+    assert ...`,
+        reportedName: `test_does_the_thing[${tag}]`,
+      };
+    case 'vitest':
+    case 'jest':
+      return { snippet: `it('does the thing ${tag}', () => { expect(...).toBe(...); });`, reportedName: `does the thing ${tag}` };
+    case 'junit':
+      return { snippet: `The testcase name in your JUnit XML must contain ${tag}, for example a test named "does the thing ${tag}".`, reportedName: `does the thing ${tag}` };
+    case 'ctrf':
+      return { snippet: `test('does the thing ${tag}', () => { expect(...).toBe(...); });  // the CTRF "name" field carries the tag`, reportedName: `does the thing ${tag}` };
+    default:
+      return { snippet: `test('does the thing ${tag}', async ({ page }) => { await expect(page).toHaveURL(...); });`, reportedName: `does the thing ${tag}` };
+  }
 }
 
 export function workflowFor(runner: Runner): string {
@@ -246,7 +273,8 @@ export async function runInit(opts: InitOptions): Promise<InitResult> {
   lines.push('', 'Next steps:');
   lines.push(`  1. Edit .okproof/${proof.name}: one "- [ ]" line per acceptance criterion (or: npx okproof sync --issue <n>).`);
   lines.push('  2. npx okproof check   # prints the [okproof:<id>] tag for each criterion');
-  lines.push(`  3. Put the tag in test titles, e.g. test('does the thing [okproof:${id}.1]', ...)`);
+  lines.push(`  3. Tag every test that covers a criterion with [okproof:<id>] in its title (${runner}); copy this:`);
+  for (const l of tagExample(runner, `${id}.1`).snippet.split('\n')) lines.push(`       ${l}`);
   lines.push('  4. Run your tests with a JUnit reporter, then: npx okproof ingest junit.xml && npx okproof gate');
   if (!opts.workflow) lines.push('  5. Add CI with: npx okproof init --workflow --runner <runner>');
   else lines.push('  5. Commit .github/workflows/okproof.yml and make the "prove" job a required check.');

@@ -30,6 +30,10 @@ export interface ProofFile {
   issue: string;
   title: string;
   criteria: Criterion[];
+  /** Heading flag {verify}: the gate fails unless verify-<issue>.json exists. */
+  requireVerify?: boolean;
+  /** Heading flag {placeholder}: the example file written by okproof init; the gate fails until it is edited. */
+  placeholder?: boolean;
 }
 
 const HEADING = /^##\s+#?([\w-]+)\s*(.*)$/;
@@ -99,15 +103,31 @@ export function formatCriterionFlags(f: { id?: string; level?: number; pre?: boo
   return t.length ? `{${t.join(' ')}} ` : '';
 }
 
+/** Splits trailing {verify} / {placeholder} flags off a heading title. Plain string scan. */
+export function splitHeadingFlags(raw: string): { title: string; requireVerify: boolean; placeholder: boolean } {
+  let title = raw.trim();
+  let requireVerify = false;
+  let placeholder = false;
+  for (;;) {
+    if (title.endsWith('{verify}')) requireVerify = true;
+    else if (title.endsWith('{placeholder}')) placeholder = true;
+    else break;
+    title = title.slice(0, title.lastIndexOf('{')).trimEnd();
+  }
+  return { title, requireVerify, placeholder };
+}
+
 export function parseProof(source: string): ProofFile {
   let issue = '';
   let title = '';
+  let requireVerify = false;
+  let placeholder = false;
   const criteria: Criterion[] = [];
   for (const line of source.split(/\r?\n/)) {
     const heading = HEADING.exec(line);
     if (heading && !issue) {
       issue = heading[1];
-      title = heading[2].trim();
+      ({ title, requireVerify, placeholder } = splitHeadingFlags(heading[2]));
       continue;
     }
     const item = ITEM.exec(line);
@@ -122,7 +142,7 @@ export function parseProof(source: string): ProofFile {
   }
   if (!issue) throw new Error('Proof file has no "## #<issue> <title>" heading.');
   if (criteria.length === 0) throw new Error(`Proof file for #${issue} lists no "- [ ]" criteria.`);
-  return { issue, title, criteria };
+  return { issue, title, criteria, ...(requireVerify ? { requireVerify } : {}), ...(placeholder ? { placeholder } : {}) };
 }
 
 const TAG = /\[okproof:([\w-]+\.[a-z0-9-]+)\]/g;

@@ -162,10 +162,11 @@ test('globMatch: pathological patterns are fast and long patterns are refused', 
 test('action.yml has a lint input (auto by default, off disables) that reaches ingest and gate through env', async () => {
   const yml = await readFile(fileURLToPath(new URL('../../action.yml', import.meta.url)), 'utf8');
   assert.match(yml, /\n {2}lint:\n[\s\S]*?default: auto/);
-  assert.equal((yml.match(/LINT: \$\{\{ inputs\.lint \}\}/g) ?? []).length, 2);
-  assert.match(yml, /ingest "\$RESULTS" "\$DIR" "\$\{lint\[@\]\}"/);
-  assert.match(yml, /gate --results "\$RESULTS" .*"\$\{lint\[@\]\}"/);
-  assert.doesNotMatch(yml, /--lint "\$LINT"/);
+  // The input is parsed once (scripts/action-options.mjs) and reaches the CLI as OKPROOF_LINT.
+  assert.equal((yml.match(/LINT: \$\{\{ inputs\.lint \}\}/g) ?? []).length, 1);
+  assert.match(yml, /ingest "\$RESULTS" "\$DIR"/);
+  assert.match(yml, /gate --results "\$RESULTS" /);
+  assert.doesNotMatch(yml, /--lint/);
 });
 
 test('--lint= (empty) is a bare --lint, so a proof folder can follow it', async () => {

@@ -1,6 +1,7 @@
 // Reads CTRF (Common Test Report Format, ctrf.io) JSON into test outcomes.
 // Many runners have a CTRF reporter, so this covers them without JUnit.
 import type { TestOutcome } from './ledger.js';
+import { MAX_RESULTS_BYTES } from './junit.js';
 
 interface CtrfAttachment {
   name?: string;
@@ -46,6 +47,9 @@ function evidenceOf(t: CtrfTest, status: string): string {
 export function parseCTRF(input: string | object): TestOutcome[] {
   let doc: unknown = input;
   if (typeof input === 'string') {
+    if (input.length > MAX_RESULTS_BYTES) {
+      throw new Error(`CTRF results are larger than ${MAX_RESULTS_BYTES / (1024 * 1024)} MB; refusing to parse them.`);
+    }
     try {
       doc = JSON.parse(input);
     } catch (err) {

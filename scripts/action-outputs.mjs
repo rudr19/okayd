@@ -22,7 +22,7 @@ try {
       try { ledgers.push(JSON.parse(await readFile(join(dir, n), 'utf8'))); } catch { /* evaluateGate reports the missing ledger */ }
     }
   }
-  const result = await evaluateGate(dir, { minLevel, ...(ledgers ? { ledgers } : {}) });
+  const result = await evaluateGate(dir, { minLevel, allowEmpty: process.env.OKPROOF_ALLOW_EMPTY === '1', ...(ledgers ? { ledgers } : {}) });
   proven = result.ok;
   lines.push(...result.notes.map((n) => `okproof ${n}`), ...result.problems.map((p) => `okproof not proven: ${p}`));
   if (lines.length === 0) lines.push(proven ? 'okproof: proven' : 'okproof: not proven');

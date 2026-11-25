@@ -19,7 +19,11 @@
 pull request with the acceptance criteria in its issue. The criteria go in a
 proof file in the repo. Tests claim criteria by tag. The run ends with a ledger
 that marks each criterion **met**, **failed**, **unproven** or **untested**. A
-criterion is met only when a test tagged to it passed and made a real assertion.
+criterion is met only when a test tagged to it passed and, as far as okproof can
+tell, made a real assertion. That judgement rests on the assertion counts your
+runner reports and on okproof's own static lint of the test source, which is a
+heuristic (see [Weak and unrelated tests](#weak-and-unrelated-tests)): it
+catches the common empty and trivial assertions, not every way to fool a test.
 Untested, flaky and assertion-less tests never count. If you run the optional
 verifier, a bug it finds counts only when it reproduces on a model-free replay.
 okproof does not judge whether a test is a *good* test, and ledgers are not
@@ -195,6 +199,21 @@ pull request that touches `.okproof/*.md` now needs a human owner's approval, so
 criteria cannot be silently removed or reworded by the author of the change.
 Use a team or a person who is not the agent's account.
 
+Run `npx okproof doctor` to check this setup. It is read-only: it looks at
+`.github/CODEOWNERS` (does a rule cover `.okproof/` with an owner), `.gitignore`
+(are ledgers ignored), your workflows (does the Action get `results`, and
+`fetch-depth` when differential checks are on) and, for the repository in
+`origin` or `--repo owner/name`, branch protection and rulesets through the GitHub
+API (the okproof check is required, code-owner review is required). A token
+(`GITHUB_TOKEN` or `GH_TOKEN`) is optional; anything it cannot read is a warning,
+never a failure. It exits 1 when a check fails. `--no-network` skips GitHub.
+
+A proof file can also demand verification. Put `{verify}` at the end of its
+heading (`## #142 Pro upgrade {verify}`), or pass `--require-verify` to the gate:
+then `verify-<issue>.json` must exist. Independently, a saved repro under
+`.okproof/repro/<issue>.*.json` with no `verify-<issue>.json` fails the gate, so
+deleting the verifier file cannot hide a refutation.
+
 ## Evidence levels
 
 "Met" is not all the same. okproof grades the evidence behind each criterion on a
@@ -290,10 +309,13 @@ A criterion gets one of four verdicts:
 - `met`: all claiming tests passed and at least one made a real assertion.
 - `untested`: no test claims it.
 
-A test is weak when its assertion count is exactly `0`. An unknown count (the
-runner did not say) is not weak, so runners without counts keep working. Pass
-`--strict-assertions` (or set `OKPROOF_STRICT_ASSERTIONS=1`) to `okproof ingest`,
-or `strictAssertions: true` to the reporter, to treat unknown as weak.
+A test is weak when its assertion count is exactly `0`. On the command line an
+unknown count (the runner did not say) is not weak, so runners without counts
+keep working. Pass `--strict-assertions` (or set `OKPROOF_STRICT_ASSERTIONS=1`) to
+`okproof ingest`, or `strictAssertions: true` to the reporter, to treat unknown as
+weak. The GitHub Action does this by default (`strict-assertions: false` relaxes
+it); with lint on, a real assertion lint finds in the test source replaces an
+unknown count, so node:test, Vitest and Jest users are not punished.
 
 How each runner reports counts:
 
@@ -317,8 +339,15 @@ assertion in the body (`expect(`, `assert`, `.should(`, `t.Error`, `t.Fatal`,
 `require.`, `toBe`, `toEqual`, `toHave`, ...), or whose only assertions are
 trivial: `expect(true).toBe(true)`, `expect(1).toBe(1)`, `expect(true).toBeTruthy()`,
 `assert.ok(true)`, `assert.equal(1, 1)`, `assert True`, `assert 1 == 1`,
-`self.assertTrue(True)` and the like. One real assertion next to a trivial one
-is enough to pass this check. It also reports tags naming a
+`self.assertTrue(True)` and the like. It also treats as not asserting anything:
+constant-only comparisons (`expect(2 + 2).toBe(4)`, `assert 2 + 2 == 4`),
+`toBeDefined()`, `toBeTruthy()` or `not.toBeNull()` on a fixture such as `page`,
+`browser`, `context`, `driver` or `app` (also `!!page`), `expect.assertions(0)`,
+assertions only inside `if (false)` or after a `return`, only inside a local
+function the test never calls, or only inside a `try { } catch { }` that swallows
+the failure. One real assertion next to a trivial one is enough to pass this
+check. A test that claims more criteria than `--max-claims` (default 3) is
+reported `OVERCLAIM`: advisory, and a failure with `--strict-relevance`. It also reports tags naming a
 criterion that no proof file lists, and criteria no tagged test claims. It
 exits 1 on a weak test or a dangling tag. Untested criteria are listed but do
 not fail the run. Also available as `lintTests()` and the `okproof_lint` MCP tool.
@@ -531,11 +560,24 @@ jobs:
       - run: echo "proven=${{ steps.okproof.outputs.proven }}"
 ```
 
-Inputs: `results` (JUnit XML path, optional), `dir` (default `.okproof`),
+Inputs: `results` (JUnit XML or CTRF path; **required** unless `allow-committed-ledgers: true`,
+because without it the gate would trust ledger files anyone can commit), `dir` (default `.okproof`),
 `gate` (default `true`, fail unless proven), `comment` (default `true`),
 `issue` (issue number to sync from; default: detected from the PR body),
-`sync` (`check` default, `write` or `off`), `differential` (`off` default, or `on`, with `test-command`; see Differential proof), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
-`sync` (`check` default, `write` or `off`), `min-level` (default `E2`, see [Evidence levels](#evidence-levels)), `base-ref` (branch the proof folder is compared with to allow E4; default the PR base), `lint` (`auto` default scans your test files and marks assertion-less tests weak; a path or glob limits the scan; `off` disables it), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+`sync` (`check` default, `write` or `off`),
+`min-level` (default `E2`, see [Evidence levels](#evidence-levels)), `base-ref` (branch the proof folder is compared with to allow E4; default the PR base),
+`differential` (`off` default, or `on`, with `test-command`; see Differential proof),
+`lint` (`auto` default scans your test files, marks assertion-less tests weak and counts a real assertion lint finds; a path or glob limits the scan; `off` disables it),
+`strict-assertions` (default `true`: an unknown assertion count is weak unless lint found a real assertion),
+`strict-relevance` (default `true`: a test that never mentions its criterion, or claims more than `max-claims`, fails),
+`max-claims` (default 3),
+`require-linked` (default `true`), `require-linked-proof` (default: same as `require-linked`; fails when the PR adds or changes a proof file whose issue it does not link, and always warns),
+`require-verify` (default `false`), `allow-empty` (default `false`), `node-version` (default `22`), `github-token` (default `${{ github.token }}`).
+
+For a required check that must run on every pull request, set `allow-empty: true`
+so a PR with no proof file passes (linked issues still need theirs), and do not
+filter the workflow with `on.pull_request.paths`: a required check that is skipped
+blocks the merge. A `paths:` filter is fine for a check that is not required.
 Outputs: `proven` (`true` or `false`) and `summary` (one line per proof file).
 Set `comment: false` to skip the PR comment and job summary (for forks, or
 when you only want the gate). The CLI honours the same switch as
